@@ -9,19 +9,19 @@ let filteredUsers = [];
 document.addEventListener('DOMContentLoaded', async () => {
     // Verificar autenticação
     if (!sessionManager.isAuthenticated()) {
-        window.location.href = '/login/index.html';
+        window.location.href = '/login/';
         return;
     }
     
     const isValid = await sessionManager.validateSession();
     if (!isValid) {
-        window.location.href = '/login/index.html';
+        window.location.href = '/login/';
         return;
     }
     
     const user = sessionManager.getCurrentUser();
     if (!user || (user.role !== 'admin' && user.role !== 'moderator')) {
-        window.location.href = '/chat/index.html';
+        window.location.href = '/chat/';
         return;
     }
 
@@ -346,11 +346,11 @@ async function resetUserPassword(userId) {
 
 async function handleLogout() {
     await sessionManager.logout();
-    window.location.href = '/login/index.html';
+    window.location.href = '/login/';
 }
 
 function goToChat() {
-    window.location.href = '/chat/index.html';
+    window.location.href = '/chat/';
 }
 
 async function deleteUserConfirm(userId) {

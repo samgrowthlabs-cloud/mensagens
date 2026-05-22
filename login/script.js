@@ -90,9 +90,9 @@ function redirectAfterLogin() {
     const user = sessionManager.getCurrentUser();
     
     if (user && user.role === 'admin') {
-        window.location.href = '/admin/index.html';
+        window.location.href = '/admin/';
     } else {
-        window.location.href = '/chat/index.html';
+        window.location.href = '/chat/';
     }
 }
 

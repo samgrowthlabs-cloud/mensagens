@@ -38,7 +38,7 @@ function setupImageFallback() {
 }
 
 function goToAdmin() {
-    window.location.href = '/admin/index.html';
+    window.location.href = '/admin/';
 }
 
 function playNotificationSound() {
@@ -63,19 +63,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     await waitForSupabase();
     
     if (!sessionManager.isAuthenticated()) {
-        window.location.href = '/login/index.html';
+        window.location.href = '/login/';
         return;
     }
     
     const isValid = await sessionManager.validateSession();
     if (!isValid) {
-        window.location.href = '/login/index.html';
+        window.location.href = '/login/';
         return;
     }
     
     const user = sessionManager.getCurrentUser();
     if (!user || !user.id) {
-        window.location.href = '/login/index.html';
+        window.location.href = '/login/';
         return;
     }
     
@@ -567,7 +567,7 @@ async function handleLogout() {
     await sessionManager.logout();
     
     // Redireciona para login
-    window.location.href = '/login/index.html';
+    window.location.href = '/login/';
 }
 
 function showProfileModal() {
