@@ -1,10 +1,11 @@
-// Admin Script - Autenticação Própria
-
+// Admin Script – Permissões: admin total, moderator limitado
 let allUsers = [];
 let editingUserId = null;
+let currentUserRole = null;
+let currentUserId = null;
 
 document.addEventListener('DOMContentLoaded', async () => {
-    // Verificar autenticação e role
+    // Verificar autenticação
     if (!sessionManager.isAuthenticated()) {
         window.location.href = '/login/index.html';
         return;
@@ -17,77 +18,122 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     
     const user = sessionManager.getCurrentUser();
-    if (user.role !== 'admin') {
+    if (!user || (user.role !== 'admin' && user.role !== 'moderator')) {
         window.location.href = '/chat/index.html';
         return;
     }
     
-    // Carregar usuários
+    currentUserRole = user.role;
+    currentUserId = user.id;
+    
+    // Ajustar interface conforme o cargo
+    setupUIByRole(user);
+    
+    // Remover opção "admin" dos selects (nunca pode ser atribuído)
+    removeAdminOption();
+    
     await loadUsers();
     
-    // Event listeners
-    document.getElementById('userSearch').addEventListener('input', 
-        debounce(filterUsers, 300)
-    );
+    document.getElementById('userSearch').addEventListener('input', debounce(filterUsers, 300));
 });
 
-async function loadUsers() {
-    const users = await databaseManager.getAllUsers();
-    allUsers = users;
-    renderUsersTable(users);
-}
-
-function renderUsersTable(users) {
-    const tbody = document.getElementById('usersTableBody');
-    
-    if (users.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-tertiary);padding:40px;">Nenhum usuário encontrado</td></tr>';
-        return;
+function setupUIByRole(user) {
+    const badge = document.querySelector('.admin-badge');
+    if (badge) {
+        badge.textContent = user.role === 'admin' ? 'ADMIN' : 'MODERADOR';
+        badge.style.background = user.role === 'admin' ? 'var(--accent-admin)' : 'var(--accent-moderator)';
     }
     
-    tbody.innerHTML = users.map(user => `
-        <tr>
-            <td>
-                <div class="user-cell">
-                    <div class="user-avatar-small">
-                        ${user.avatar_url ? 
-                            `<img src="${escapeHtml(user.avatar_url)}" alt="${escapeHtml(user.username)}">` :
-                            `<span>${getInitials(user.username)}</span>`
-                        }
-                    </div>
-                    <span style="color: ${getRoleColor(user.role)}">${escapeHtml(user.username)}</span>
-                </div>
-            </td>
-            <td>${escapeHtml(user.email || '-')}</td>
-            <td>
-                <span class="role-badge-admin role-${user.role.toUpperCase()}">${user.role.toUpperCase()}</span>
-            </td>
-            <td>
-                <span class="status-badge ${user.is_banned ? 'banned' : user.status}">
-                    ${user.is_banned ? 'Banido' : user.status}
-                </span>
-            </td>
-            <td>
-                <div class="action-buttons">
-                    <button class="btn-action" onclick="showEditUserModal('${user.id}')">Editar</button>
-                    ${user.is_banned ? 
-                        `<button class="btn-action success" onclick="toggleBanUser('${user.id}', false)">Desbanir</button>` :
-                        `<button class="btn-action danger" onclick="toggleBanUser('${user.id}', true)">Banir</button>`
-                    }
-                    <button class="btn-action warning" onclick="resetUserPassword('${user.id}')">Resetar Senha</button>
-                </div>
-            </td>
-        </tr>
-    `).join('');
+    // Moderador não vê botão "Novo Usuário"
+    const btnAdd = document.getElementById('btnAddUser') || document.querySelector('.btn-add-user');
+    if (btnAdd && user.role !== 'admin') {
+        btnAdd.style.display = 'none';
+    }
+    
+    // Moderador não vê colunas Email, Cargo e ações de Editar/Resetar
+    if (user.role === 'moderator') {
+    document.querySelectorAll('.col-email, .col-role').forEach(el => el.classList.add('hidden'));
+    }
+}
+
+function removeAdminOption() {
+    // Remove a opção "admin" de todos os selects de role
+    document.querySelectorAll('select.form-input option[value="admin"]').forEach(opt => opt.remove());
 }
 
 function getRoleColor(role) {
     const colors = {
-        'admin': 'var(--accent-admin)',
-        'moderator': 'var(--accent-moderator)',
-        'user': 'var(--text-primary)'
+        'admin': '#dc2626',
+        'moderator': '#7c3aed',
+        'user': '#a0a0a0'
     };
     return colors[role] || colors.user;
+}
+
+async function loadUsers() {
+    const users = await databaseManager.getAllUsers();
+    allUsers = users || [];
+    renderUsersTable(allUsers);
+}
+
+function renderUsersTable(users) {
+    const tbody = document.getElementById('usersTableBody');
+    const isAdmin = currentUserRole === 'admin';
+    
+    if (!users.length) {
+        tbody.innerHTML = `<tr><td colspan="${isAdmin ? 5 : 3}" style="text-align:center;padding:40px;">Nenhum usuário</td></tr>`;
+        return;
+    }
+    
+    tbody.innerHTML = users.map(user => {
+        const isSelf = user.id === currentUserId;
+        const canBan = (currentUserRole === 'admin' && user.role !== 'admin') ||
+                       (currentUserRole === 'moderator' && user.role === 'user');
+        
+        let actions = '';
+        if (isAdmin) {
+            actions = `
+                <button class="btn-action" onclick="showEditUserModal('${user.id}')">Editar</button>
+                ${canBan ? 
+                    (user.is_banned ? 
+                        `<button class="btn-action success" onclick="toggleBanUser('${user.id}', false)">Desbanir</button>` :
+                        `<button class="btn-action danger" onclick="toggleBanUser('${user.id}', true)">Banir</button>`) : ''
+                }
+                <button class="btn-action warning" onclick="resetUserPassword('${user.id}')">Resetar</button>
+            `;
+        } else if (currentUserRole === 'moderator') {
+            if (canBan) {
+                actions = user.is_banned ? 
+                    `<button class="btn-action success" onclick="toggleBanUser('${user.id}', false)">Desbanir</button>` :
+                    `<button class="btn-action danger" onclick="toggleBanUser('${user.id}', true)">Banir</button>`;
+            }
+        }
+        
+        return `
+            <tr>
+                <td>
+                    <div class="user-cell">
+                        <div class="user-avatar-small">
+                            ${user.avatar_url ? 
+                                `<img src="${escapeHtml(user.avatar_url)}" alt="${escapeHtml(user.username)}">` :
+                                `<span>${getInitials(user.username)}</span>`
+                            }
+                        </div>
+                        <span style="color: ${getRoleColor(user.role)}">${escapeHtml(user.username)}</span>
+                    </div>
+                </td>
+                ${isAdmin ? `<td class="col-email">${escapeHtml(user.email || '-')}</td>` : ''}
+                ${isAdmin ? `<td class="col-role"><span class="role-badge-admin role-${user.role.toUpperCase()}">${user.role.toUpperCase()}</span></td>` : ''}
+                <td>
+                    <span class="status-badge ${user.is_banned ? 'banned' : user.status}">
+                        ${user.is_banned ? 'Banido' : user.status}
+                    </span>
+                </td>
+                <td class="col-edit">
+                    <div class="action-buttons">${actions}</div>
+                </td>
+            </tr>`;
+    }).join('');
 }
 
 function filterUsers(e) {
@@ -100,18 +146,23 @@ function filterUsers(e) {
 }
 
 function showCreateUserModal() {
+    if (currentUserRole !== 'admin') return;
     document.getElementById('createUserModal').style.display = 'flex';
 }
 
 function closeCreateUserModal() {
     document.getElementById('createUserModal').style.display = 'none';
-    // Limpar campos
     document.getElementById('newUsername').value = '';
     document.getElementById('newEmail').value = '';
     document.getElementById('newPassword').value = '';
 }
 
 async function createUser() {
+    if (currentUserRole !== 'admin') {
+        showToast('Apenas administradores podem criar usuários', 'error');
+        return;
+    }
+    
     const username = document.getElementById('newUsername').value.trim();
     const email = document.getElementById('newEmail').value.trim();
     const password = document.getElementById('newPassword').value;
@@ -133,23 +184,17 @@ async function createUser() {
     }
     
     try {
-        await databaseManager.createUser({
-            username,
-            email,
-            password,
-            role
-        });
-        
+        await databaseManager.createUser({ username, email, password, role });
         showToast('Usuário criado com sucesso', 'success');
         closeCreateUserModal();
         await loadUsers();
-        
     } catch (error) {
         showToast('Erro ao criar usuário: ' + error.message, 'error');
     }
 }
 
 function showEditUserModal(userId) {
+    if (currentUserRole !== 'admin') return;
     const user = allUsers.find(u => u.id === userId);
     if (!user) return;
     
@@ -167,6 +212,7 @@ function closeEditUserModal() {
 }
 
 async function saveUserEdit() {
+    if (currentUserRole !== 'admin') return;
     if (!editingUserId) return;
     
     const username = document.getElementById('editUsername').value.trim();
@@ -190,21 +236,31 @@ async function saveUserEdit() {
         showToast('Usuário atualizado', 'success');
         closeEditUserModal();
         await loadUsers();
-        
     } catch (error) {
         showToast('Erro ao atualizar usuário: ' + error.message, 'error');
     }
 }
 
 async function toggleBanUser(userId, ban) {
+    const target = allUsers.find(u => u.id === userId);
+    if (!target) return;
+    
+    // Moderador só pode banir usuários comuns
+    if (currentUserRole === 'moderator' && target.role !== 'user') {
+        showToast('Você só pode banir/desbanir usuários comuns', 'error');
+        return;
+    }
+    
+    // Admin não pode banir outro admin
+    if (currentUserRole === 'admin' && target.role === 'admin') {
+        showToast('Não é possível banir um administrador', 'error');
+        return;
+    }
+    
     try {
-        if (ban) {
-            await databaseManager.banUser(userId);
-            showToast('Usuário banido', 'success');
-        } else {
-            await databaseManager.unbanUser(userId);
-            showToast('Usuário desbanido', 'success');
-        }
+        if (ban) await databaseManager.banUser(userId);
+        else await databaseManager.unbanUser(userId);
+        showToast(ban ? 'Usuário banido' : 'Usuário desbanido', 'success');
         await loadUsers();
     } catch (error) {
         showToast('Erro ao alterar status: ' + error.message, 'error');
@@ -212,14 +268,13 @@ async function toggleBanUser(userId, ban) {
 }
 
 async function resetUserPassword(userId) {
+    if (currentUserRole !== 'admin') return;
     const newPass = prompt('Digite a nova senha:');
     if (!newPass) return;
-    
     if (newPass.length < 6) {
         showToast('Senha deve ter no mínimo 6 caracteres', 'error');
         return;
     }
-    
     try {
         await databaseManager.updateUser(userId, { password: newPass });
         showToast('Senha resetada com sucesso', 'success');
@@ -232,7 +287,6 @@ async function handleLogout() {
     await sessionManager.logout();
     window.location.href = '/login/index.html';
 }
-
 
 function goToChat() {
     window.location.href = '/chat/index.html';

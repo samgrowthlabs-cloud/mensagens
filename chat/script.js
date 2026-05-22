@@ -8,21 +8,14 @@ let lastMessageCheck = new Date().toISOString();
 let selectedCardElement = null;
 
 
-function goToAdmin() {
-    window.location.href = '/admin/';
-}
-
-
 // Corrigir imagens de avatar quebradas
 function setupImageFallback() {
     document.addEventListener('error', function(e) {
-        setupImageFallback();
         const img = e.target;
         if (img.tagName === 'IMG' && img.closest('.user-avatar, .avatar-preview, .avatar-preview img')) {
             img.style.display = 'none';
             const parent = img.parentElement;
             if (parent) {
-                // Se já houver um fallback, mostra; senão cria
                 let fallback = parent.querySelector('.avatar-fallback');
                 if (!fallback) {
                     fallback = document.createElement('span');
@@ -30,7 +23,6 @@ function setupImageFallback() {
                     fallback.style.cssText = 'font-size:16px;color:#9ca3af;font-weight:500;';
                     parent.appendChild(fallback);
                 }
-                // Pega as iniciais do usuário atual (do perfil ou da sessão)
                 const username = sessionManager.getCurrentUser()?.username || currentConversationUser?.username || '';
                 fallback.textContent = getInitials(username) || '?';
                 fallback.style.display = '';
@@ -38,6 +30,11 @@ function setupImageFallback() {
         }
     }, true);
 }
+
+function goToAdmin() {
+    window.location.href = '/admin/index.html';
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('🚀 Iniciando chat...');
     

@@ -242,6 +242,29 @@
   color: var(--accent-success);
 }
 
+.btn-chat {
+    padding: 8px 16px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-md);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: var(--font-size-sm);
+    cursor: pointer;
+    margin-right: 8px;
+    transition: all var(--transition-fast);
+}
+.btn-chat:hover {
+    border-color: var(--text-secondary);
+    color: var(--text-primary);
+}
+
+/* Moderador: esconder colunas */
+.col-email.hidden,
+.col-role.hidden,
+.col-edit.hidden {
+  display: none;
+}
+
 @media (max-width: 768px) {
   .admin-header {
     flex-direction: column;
