@@ -281,6 +281,29 @@
   color: var(--accent-danger);
 }
 
+/* Ações em massa */
+.mass-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.btn-mass {
+  padding: 10px 20px;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  border-radius: var(--border-radius-md);
+  background: rgba(239, 68, 68, 0.08);
+  color: #ef4444;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.btn-mass:hover {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: #ef4444;
+}
+
 .action-buttons {
   display: flex;
   gap: var(--spacing-xs);

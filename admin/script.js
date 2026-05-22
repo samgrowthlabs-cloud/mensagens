@@ -25,6 +25,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
     }
 
+    // Bloquear usuários banidos
+    if (user.is_banned) {
+        document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#0a0a0a;color:#dc2626;font-size:24px;">🚫 ACESSO NEGADO</div>';
+        return;
+    }
+
         document.querySelectorAll('.sortable').forEach(th => {
         th.addEventListener('click', () => {
             const field = th.dataset.sort;
@@ -70,7 +76,13 @@ function setupUIByRole(user) {
     
     // Moderador não vê colunas Email, Cargo e ações de Editar/Resetar
     if (user.role === 'moderator') {
-    document.querySelectorAll('.col-email, .col-role').forEach(el => el.classList.add('hidden'));
+        document.querySelectorAll('.col-email, .col-role').forEach(el => el.classList.add('hidden'));
+    }
+
+    // Mostrar ações em massa apenas para admin
+    const massActions = document.getElementById('massActions');
+    if (massActions && user.role === 'admin') {
+        massActions.style.display = 'flex';
     }
 }
 
@@ -525,7 +537,7 @@ async function viewUserMessages(userId) {
     const modal = document.createElement('div');
     modal.className = 'modal-overlay';
     modal.innerHTML = `
-        <div class="modal" style="max-width: 600px; max-height: 80vh; overflow-y: auto;">
+        <div class="modal" style="max-width: 650px; max-height: 80vh; overflow-y: auto;">
             <h2 class="modal-title">💬 Mensagens de ${escapeHtml(user.username)}</h2>
             <div class="modal-body">
                 ${allMessages.length === 0 ? '<p style="text-align:center;color:var(--text-tertiary);">Nenhuma mensagem encontrada</p>' :
@@ -533,12 +545,20 @@ async function viewUserMessages(userId) {
                         const otherUser = m.sender_id === userId ? userMap[m.receiver_id] || '?' : userMap[m.sender_id] || '?';
                         const isSender = m.sender_id === userId;
                         return `
-                            <div style="padding:8px 0; border-bottom:1px solid var(--border-subtle);">
-                                <div style="font-size:12px; color:${isSender ? '#22c55e' : '#7c3aed'}; margin-bottom:4px;">
-                                    ${isSender ? 'Enviou para' : 'Recebeu de'} <strong>${escapeHtml(otherUser)}</strong>
-                                    <span style="float:right; color:var(--text-tertiary);">${formatTime(m.created_at)}</span>
+                            <div style="padding:8px 0; border-bottom:1px solid var(--border-subtle); display: flex; justify-content: space-between; align-items: center;">
+                                <div style="flex:1;">
+                                    <div style="font-size:12px; color:${isSender ? '#22c55e' : '#7c3aed'}; margin-bottom:4px;">
+                                        ${isSender ? 'Enviou para' : 'Recebeu de'} <strong>${escapeHtml(otherUser)}</strong>
+                                        <span style="float:right; color:var(--text-tertiary);">${formatTime(m.created_at)}</span>
+                                    </div>
+                                    <div style="font-size:13px; color:var(--text-primary);">${escapeHtml(m.content.length > 80 ? m.content.substring(0,80) + '...' : m.content)}</div>
                                 </div>
-                                <div style="font-size:13px; color:var(--text-primary);">${escapeHtml(m.content.length > 80 ? m.content.substring(0,80) + '...' : m.content)}</div>
+                                ${currentUserRole === 'admin' && !m.deleted ? `
+                                    <button class="btn-action" onclick="event.stopPropagation(); deleteSingleMessage('${m.id}', '${userId}')" 
+                                            style="margin-left:12px; background:rgba(239,68,68,0.1); color:#ef4444; border-color:#ef4444; flex-shrink:0;">
+                                        🗑️
+                                    </button>
+                                ` : ''}
                             </div>`;
                     }).join('')
                 }
@@ -550,6 +570,26 @@ async function viewUserMessages(userId) {
     `;
     document.body.appendChild(modal);
     modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+    
+    // Armazenar referência para recarregar
+    modal._userId = userId;
+}
+
+// Função auxiliar para deletar mensagem específica
+async function deleteSingleMessage(messageId, userId) {
+    if (!confirm('Excluir esta mensagem permanentemente?')) return;
+    
+    try {
+        await databaseManager.adminDeleteMessage(messageId);
+        showToast('Mensagem excluída', 'success');
+        
+        // Fechar modal atual e reabrir
+        const oldModal = document.querySelector('.modal-overlay');
+        if (oldModal) oldModal.remove();
+        viewUserMessages(userId);
+    } catch (error) {
+        showToast('Erro ao excluir mensagem: ' + error.message, 'error');
+    }
 }
 
 
@@ -615,4 +655,97 @@ async function showUserProfile(userId) {
     `;
     document.body.appendChild(modal);
     modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+}
+
+
+
+// ============ VERIFICAÇÃO DE SENHA ============
+async function verifyAdminPassword(password) {
+  const user = sessionManager.getCurrentUser();
+  if (!user) return false;
+  const dbUser = await databaseManager.getUserById(user.id);
+  if (!dbUser) return false;
+  return await cryptoManager.verifyPassword(password, dbUser.password_hash);
+}
+
+function showPasswordModal(title, onSuccess) {
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.innerHTML = `
+    <div class="modal" style="max-width: 420px;">
+      <h2 class="modal-title">${title}</h2>
+      <div class="modal-body">
+        <p style="color: var(--text-secondary); margin-bottom: 12px;">Digite sua senha para confirmar:</p>
+        <input type="password" id="confirmPasswordInput" class="form-input" placeholder="Sua senha" autocomplete="current-password">
+        <p id="passwordError" style="color: var(--accent-danger); font-size: 13px; margin-top: 8px; display: none;"></p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-cancel" id="cancelPasswordBtn">Cancelar</button>
+        <button class="btn-save" id="confirmPasswordBtn" style="background: #ef4444; color: #fff;">Confirmar</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  document.getElementById('cancelPasswordBtn').onclick = () => modal.remove();
+  document.getElementById('confirmPasswordBtn').onclick = async () => {
+    const passwordInput = document.getElementById('confirmPasswordInput');
+    const errorEl = document.getElementById('passwordError');
+    const password = passwordInput.value;
+    if (!password) {
+      errorEl.textContent = 'Digite sua senha.';
+      errorEl.style.display = 'block';
+      return;
+    }
+    const valid = await verifyAdminPassword(password);
+    if (!valid) {
+      errorEl.textContent = 'Senha incorreta.';
+      errorEl.style.display = 'block';
+      return;
+    }
+    modal.remove();
+    onSuccess();
+  };
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+}
+
+// ============ EXCLUSÃO EM MASSA ============
+async function deleteAllUsers() {
+  showPasswordModal(
+    '🔐 Confirmar exclusão em massa',
+    async () => {
+      try {
+        const { error } = await db
+          .from('users')
+          .delete()
+          .neq('role', 'admin');
+        if (error) throw error;
+        showToast('Todos os usuários (exceto admins) foram excluídos.', 'success');
+        await loadUsers();
+        await loadStats();
+      } catch (error) {
+        showToast('Erro ao excluir usuários: ' + error.message, 'error');
+      }
+    }
+  );
+}
+
+async function deleteAllMessages() {
+  showPasswordModal(
+    '🔐 Confirmar exclusão de todas as mensagens',
+    async () => {
+      try {
+        const { error } = await db
+          .from('messages')
+          .delete()
+          .gt('created_at', '2000-01-01'); // todas as mensagens
+        if (error) throw error;
+        showToast('Todas as mensagens foram apagadas.', 'success');
+        await loadStats();
+        await loadActivityLogs();
+      } catch (error) {
+        showToast('Erro ao apagar mensagens: ' + error.message, 'error');
+      }
+    }
+  );
 }

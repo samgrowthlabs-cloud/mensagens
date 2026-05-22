@@ -238,6 +238,22 @@ class DatabaseManager {
         return data;
     }
 
+    // Admin pode deletar qualquer mensagem (sem verificar remetente)
+    async adminDeleteMessage(messageId) {
+        if (!db) throw new Error('Supabase não inicializado');
+        
+        const { error } = await db
+            .from('messages')
+            .update({
+                deleted: true,
+                deleted_at: new Date().toISOString()
+            })
+            .eq('id', messageId);
+        
+        if (error) throw error;
+        return true;
+    }
+
     async markMessagesAsRead(senderId, receiverId) {
         if (!db) throw new Error('Supabase não inicializado');
         
