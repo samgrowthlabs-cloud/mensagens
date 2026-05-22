@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BIDJORCHAT</title>
+    <script>
+        // Redirecionamento automático
+        const session = localStorage.getItem('bidjorchat_session');
+        
+        if (session) {
+            try {
+                const sessionData = JSON.parse(session);
+                if (sessionData.user && sessionData.user.role === 'admin') {
+                    window.location.href = '/admin/index.html';
+                } else {
+                    window.location.href = '/chat/index.html';
+                }
+            } catch (e) {
+                window.location.href = '/login/index.html';
+            }
+        } else {
+            window.location.href = '/login/index.html';
+        }
+    </script>
+</head>
+<body>
+    <div style="
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        background: #0a0a0a;
+        color: white;
+        font-family: -apple-system, sans-serif;
+    ">
+        <p>Redirecionando...</p>
+    </div>
+</body>
+</html>
