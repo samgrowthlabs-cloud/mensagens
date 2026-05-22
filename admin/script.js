@@ -3,6 +3,8 @@ let allUsers = [];
 let editingUserId = null;
 let currentUserRole = null;
 let currentUserId = null;
+let currentSort = { field: 'username', direction: 'asc' };
+let filteredUsers = [];
 
 document.addEventListener('DOMContentLoaded', async () => {
     // Verificar autenticação
@@ -22,6 +24,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         window.location.href = '/chat/index.html';
         return;
     }
+
+        document.querySelectorAll('.sortable').forEach(th => {
+        th.addEventListener('click', () => {
+            const field = th.dataset.sort;
+            if (currentSort.field === field) {
+                currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+            } else {
+                currentSort.field = field;
+                currentSort.direction = 'asc';
+            }
+            updateSortArrows();
+            renderUsersTable(sortUsers(filteredUsers.length ? filteredUsers : allUsers));
+        });
+    });
     
     currentUserRole = user.role;
     currentUserId = user.id;
@@ -33,6 +49,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     removeAdminOption();
     
     await loadUsers();
+    await loadStats();
+    await loadActivityLogs();
     
     document.getElementById('userSearch').addEventListener('input', debounce(filterUsers, 300));
 });
@@ -73,9 +91,9 @@ function getRoleColor(role) {
 async function loadUsers() {
     const users = await databaseManager.getAllUsers();
     allUsers = users || [];
-    renderUsersTable(allUsers);
+    filteredUsers = [...allUsers];
+    renderUsersTable(sortUsers(filteredUsers));
 }
-
 function renderUsersTable(users) {
     const tbody = document.getElementById('usersTableBody');
     const isAdmin = currentUserRole === 'admin';
@@ -141,11 +159,11 @@ function renderUsersTable(users) {
 
 function filterUsers(e) {
     const searchTerm = e.target.value.toLowerCase();
-    const filtered = allUsers.filter(user => 
+    filteredUsers = allUsers.filter(user => 
         user.username.toLowerCase().includes(searchTerm) ||
         (user.email && user.email.toLowerCase().includes(searchTerm))
     );
-    renderUsersTable(filtered);
+    renderUsersTable(sortUsers(filteredUsers));
 }
 
 function showCreateUserModal() {
@@ -194,6 +212,8 @@ async function createUser() {
     } catch (error) {
         showToast('Erro ao criar usuário: ' + error.message, 'error');
     }
+
+    await databaseManager.logActivity(newUser.id, 'USER_CREATED');
 }
 
 function showEditUserModal(userId) {
@@ -268,6 +288,8 @@ async function toggleBanUser(userId, ban) {
     } catch (error) {
         showToast('Erro ao alterar status: ' + error.message, 'error');
     }
+
+    await databaseManager.logActivity(userId, ban ? 'USER_BANNED' : 'USER_UNBANNED');
 }
 
 async function resetUserPassword(userId) {
@@ -314,5 +336,144 @@ async function deleteUserConfirm(userId) {
         await loadUsers();
     } catch (error) {
         showToast('Erro ao excluir usuário: ' + error.message, 'error');
+    }
+}
+
+// ============ ESTATÍSTICAS ============
+async function loadStats() {
+    try {
+        // Total de usuários
+        const { count: totalUsers } = await db
+            .from('users')
+            .select('*', { count: 'exact', head: true });
+        
+        // Online agora
+        const { count: online } = await db
+            .from('users')
+            .select('*', { count: 'exact', head: true })
+            .eq('status', 'online');
+        
+        // Total de mensagens
+        const { count: totalMessages } = await db
+            .from('messages')
+            .select('*', { count: 'exact', head: true });
+        
+        // Banidos
+        const { count: banned } = await db
+            .from('users')
+            .select('*', { count: 'exact', head: true })
+            .eq('is_banned', true);
+        
+        document.getElementById('statTotalUsers').textContent = totalUsers || 0;
+        document.getElementById('statOnline').textContent = online || 0;
+        document.getElementById('statMessages').textContent = totalMessages || 0;
+        document.getElementById('statBanned').textContent = banned || 0;
+        
+    } catch (error) {
+        console.error('Erro ao carregar estatísticas:', error);
+    }
+}
+
+// ============ LOGS DE ATIVIDADE ============
+async function loadActivityLogs() {
+    const tbody = document.getElementById('logsTableBody');
+    
+    try {
+        const { data: logs, error } = await db
+            .from('activity_logs')
+            .select(`
+                id,
+                action,
+                created_at,
+                user:users(username, role)
+            `)
+            .order('created_at', { ascending: false })
+            .limit(20);
+        
+        if (error) throw error;
+        
+        if (!logs || logs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;padding:40px;color:var(--text-tertiary);">Nenhuma atividade registrada</td></tr>';
+            return;
+        }
+        
+        tbody.innerHTML = logs.map(log => {
+            const username = log.user?.username || 'Sistema';
+            const role = log.user?.role || '';
+            const roleColor = getRoleColor(role);
+            const time = formatTime(log.created_at);
+            
+            // Traduzir ações comuns
+            const actionLabels = {
+                'LOGIN': '🔑 Login',
+                'LOGOUT': '🚪 Logout',
+                'PASSWORD_CHANGED': '🔒 Alterou senha',
+                'USER_CREATED': '✨ Usuário criado',
+                'USER_BANNED': '🚫 Usuário banido',
+                'USER_UNBANNED': '✅ Usuário desbanido',
+                'USER_DELETED': '🗑️ Usuário excluído'
+            };
+            
+            const actionLabel = actionLabels[log.action] || log.action;
+            
+            return `
+                <tr>
+                    <td>
+                        <span style="color: ${roleColor}; font-weight: 500;">${escapeHtml(username)}</span>
+                    </td>
+                    <td>${actionLabel}</td>
+                    <td style="color: var(--text-tertiary); font-size: 13px;">${time}</td>
+                </tr>`;
+        }).join('');
+        
+    } catch (error) {
+        console.error('Erro ao carregar logs:', error);
+        tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;padding:40px;color:var(--accent-danger);">Erro ao carregar atividades</td></tr>';
+    }
+}
+
+
+function sortUsers(users) {
+    const field = currentSort.field;
+    const direction = currentSort.direction;
+    
+    return [...users].sort((a, b) => {
+        let valA, valB;
+        
+        switch (field) {
+            case 'username':
+                valA = a.username.toLowerCase();
+                valB = b.username.toLowerCase();
+                break;
+            case 'email':
+                valA = (a.email || '').toLowerCase();
+                valB = (b.email || '').toLowerCase();
+                break;
+            case 'role':
+                const roleOrder = { admin: 3, moderator: 2, user: 1 };
+                valA = roleOrder[a.role] || 0;
+                valB = roleOrder[b.role] || 0;
+                break;
+            case 'status':
+                valA = a.is_banned ? 2 : (a.status === 'online' ? 1 : 0);
+                valB = b.is_banned ? 2 : (b.status === 'online' ? 1 : 0);
+                break;
+            default:
+                return 0;
+        }
+        
+        if (valA < valB) return direction === 'asc' ? -1 : 1;
+        if (valA > valB) return direction === 'asc' ? 1 : -1;
+        return 0;
+    });
+}
+
+function updateSortArrows() {
+    document.querySelectorAll('.sortable .sort-arrow').forEach(arrow => {
+        arrow.classList.remove('asc', 'desc');
+    });
+    const activeHeader = document.querySelector(`.sortable[data-sort="${currentSort.field}"] .sort-arrow`);
+    if (activeHeader) {
+        activeHeader.classList.add(currentSort.direction);
     }
 }

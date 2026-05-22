@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BIDJORCHAT - Admin Panel</title>
   
-  <!-- Supabase CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   
   <link rel="stylesheet" href="../styles/variables.css">
@@ -28,31 +27,80 @@
     </header>
     
     <main class="admin-content">
+      <!-- CARDS DE ESTATÍSTICAS -->
+      <div class="stats-grid" id="statsGrid">
+        <div class="stat-card">
+          <div class="stat-icon">👥</div>
+          <div class="stat-value" id="statTotalUsers">-</div>
+          <div class="stat-label">Total de Usuários</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">🟢</div>
+          <div class="stat-value" id="statOnline">-</div>
+          <div class="stat-label">Online Agora</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">💬</div>
+          <div class="stat-value" id="statMessages">-</div>
+          <div class="stat-label">Mensagens Enviadas</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">🚫</div>
+          <div class="stat-value" id="statBanned">-</div>
+          <div class="stat-label">Usuários Banidos</div>
+        </div>
+      </div>
+
+      <!-- CONTROLES DA TABELA -->
       <div class="admin-controls">
         <div class="search-box">
           <input type="text" id="userSearch" placeholder="Buscar usuários..." class="search-input">
         </div>
       </div>
       
+      <!-- TABELA DE USUÁRIOS -->
       <div class="table-container">
         <table class="admin-table">
           <thead>
                 <tr>
-                    <th>Usuário</th>
-                    <th class="col-email">Email</th>
-                    <th class="col-role">Cargo</th>
-                    <th>Status</th>
+                    <th data-sort="username" class="sortable">Usuário <span class="sort-arrow"></span></th>
+                    <th data-sort="email" class="col-email sortable">Email <span class="sort-arrow"></span></th>
+                    <th data-sort="role" class="col-role sortable">Cargo <span class="sort-arrow"></span></th>
+                    <th data-sort="status" class="sortable">Status <span class="sort-arrow"></span></th>
                     <th class="col-edit">Ações</th>
                 </tr>
-            </thead>
+           </thead>
           <tbody id="usersTableBody">
-                <tr>
-                    <td colspan="5">
-                    <div class="skeleton" style="height:40px;margin:4px;"></div>
-                    </td>
-                </tr>
-            </tbody>
+            <tr>
+              <td colspan="5">
+                <div class="skeleton" style="height:40px;margin:4px;"></div>
+              </td>
+            </tr>
+          </tbody>
         </table>
+      </div>
+
+      <!-- LOGS DE ATIVIDADE -->
+      <div class="logs-section">
+        <h2 class="section-title">📋 Atividades Recentes</h2>
+        <div class="table-container">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Usuário</th>
+                <th>Ação</th>
+                <th>Data/Hora</th>
+              </tr>
+            </thead>
+            <tbody id="logsTableBody">
+              <tr>
+                <td colspan="3">
+                  <div class="skeleton" style="height:40px;margin:4px;"></div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </main>
   </div>
@@ -123,7 +171,6 @@
     </div>
   </div>
   
-  <!-- Scripts na ordem correta -->
   <script src="../js/config.js"></script>
   <script src="../js/utils.js"></script>
   <script src="../js/crypto.js"></script>
