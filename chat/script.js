@@ -10,6 +10,8 @@ let typingTimer = null;
 let typingInterval = null;
 let pollingTimeout = null;
 let pollingActive = false;
+let activePoll = null;
+let userVote = null;
 
 
 // Corrigir imagens de avatar quebradas
@@ -86,6 +88,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     
     initializeUI(user);
+    startPollCheck();
     await updateMyStatus('online');
     await loadAllData(user.id);
     startMessagePolling(user.id);
@@ -539,6 +542,7 @@ function toggleSidebar() { document.getElementById('sidebar')?.classList.toggle(
 async function handleLogout() {
     stopMessagePolling();
     stopTypingPolling();
+    stopPollCheck();
     if (currentUserId) await updateMyStatus('offline');
     if (typingInterval) clearInterval(typingInterval);
     await sessionManager.logout();
@@ -690,3 +694,113 @@ async function checkTypingStatus() {
     document.getElementById('typingIndicator').style.display = 'none';
   }
 }
+
+
+async function loadActivePoll() {
+    try {
+        const { data: polls } = await db.from('polls')
+            .select('*')
+            .eq('is_active', true)
+            .order('created_at', { ascending: false })
+            .limit(1);
+        
+        if (polls && polls.length > 0) {
+            activePoll = polls[0];
+            // Verificar voto do usuário
+            const { data: votes } = await db.from('poll_votes')
+                .select('*')
+                .eq('poll_id', activePoll.id)
+                .eq('user_id', currentUserId)
+                .maybeSingle();
+            userVote = votes;
+            renderPollBanner();
+        } else {
+            activePoll = null;
+            userVote = null;
+            document.getElementById('pollBanner').style.display = 'none';
+        }
+    } catch (e) {}
+}
+
+function renderPollBanner() {
+    const banner = document.getElementById('pollBanner');
+    if (!activePoll) { banner.style.display = 'none'; return; }
+    banner.style.display = 'block';
+    
+    const options = JSON.parse(activePoll.options);
+    const totalVotes = userVote ? '(aguardando resultados...)' : ''; // será carregado separadamente
+    
+    if (userVote) {
+        // Mostrar resultados parciais (vai atualizar via polling)
+        loadPollResults(activePoll.id).then(html => {
+            banner.innerHTML = `
+                <div class="poll-question">📊 ${escapeHtml(activePoll.question)}</div>
+                <div class="poll-results">${html}</div>
+                <p style="font-size:11px;color:var(--text-tertiary);margin-top:8px;">Seu voto foi registrado ✅</p>
+            `;
+        });
+    } else {
+        banner.innerHTML = `
+            <div class="poll-question">📊 ${escapeHtml(activePoll.question)}</div>
+            ${options.map((opt, i) => `
+                <button class="poll-option" onclick="votePoll(${i})">${escapeHtml(opt)}</button>
+            `).join('')}
+        `;
+    }
+}
+
+async function votePoll(optionIndex) {
+    if (!activePoll || userVote) return;
+    try {
+        await db.from('poll_votes').insert({
+            poll_id: activePoll.id,
+            user_id: currentUserId,
+            option_index: optionIndex
+        });
+        userVote = { option_index: optionIndex };
+        renderPollBanner();
+        showToast('Voto registrado!', 'success');
+    } catch (e) {
+        if (e.message.includes('duplicate')) {
+            showToast('Você já votou nesta enquete', 'error');
+        } else {
+            showToast('Erro ao votar', 'error');
+        }
+    }
+}
+
+async function loadPollResults(pollId) {
+    const { data: poll } = await db.from('polls').select('*').eq('id', pollId).single();
+    if (!poll) return '';
+    const { data: votes } = await db.from('poll_votes').select('*').eq('poll_id', pollId);
+    const options = JSON.parse(poll.options);
+    const counts = new Array(options.length).fill(0);
+    (votes || []).forEach(v => { if (v.option_index < counts.length) counts[v.option_index]++; });
+    const total = counts.reduce((a, b) => a + b, 0) || 1;
+    
+    return options.map((opt, i) => {
+        const pct = Math.round((counts[i] / total) * 100);
+        const isMyVote = userVote && userVote.option_index === i;
+        return `
+            <div class="poll-bar">
+                <span style="width:80px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(opt)}</span>
+                <div class="poll-bar-fill">
+                    <div class="poll-bar-inner" style="width:${pct}%;"></div>
+                </div>
+                <span style="width:40px;text-align:right;">${pct}%</span>
+                ${isMyVote ? '✅' : ''}
+            </div>
+        `;
+    }).join('');
+}
+
+// No polling de mensagens, adicione uma verificação da enquete a cada 30 segundos:
+let pollCheckInterval = null;
+function startPollCheck() {
+    loadActivePoll();
+    pollCheckInterval = setInterval(loadActivePoll, 30000);
+}
+function stopPollCheck() {
+    if (pollCheckInterval) clearInterval(pollCheckInterval);
+}
+// Chame startPollCheck() no DOMContentLoaded e stopPollCheck() no handleLogout

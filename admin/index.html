@@ -2,6 +2,18 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
+  <!-- Favicon -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/icons/icon-32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/assets/icons/icon-16.png">
+    <link rel="apple-touch-icon" href="/assets/icons/icon-192.png">
+  <!-- PWA -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#0a0a0a">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="BIDJORCHAT">
+    <link rel="apple-touch-icon" href="/assets/icons/icon-192.png">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BIDJORCHAT - Admin Panel</title>
   
@@ -11,6 +23,34 @@
   <link rel="stylesheet" href="../styles/global.css">
   <link rel="stylesheet" href="../styles/responsive.css">
   <link rel="stylesheet" href="style.css">
+  
+  <style>
+    .admin-content section {
+      margin-bottom: 40px;
+    }
+    .admin-content section:last-child {
+      margin-bottom: 0;
+    }
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .section-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: #f0f0f0;
+      margin: 0;
+    }
+    .admin-controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+  </style>
 </head>
 <body>
   <div class="admin-layout">
@@ -27,32 +67,35 @@
     </header>
     
     <main class="admin-content">
-      <!-- CARDS DE ESTATÍSTICAS -->
-      <div class="stats-grid" id="statsGrid">
+    <!-- CARDS DE ESTATÍSTICAS -->
+    <section class="stats-section">
+        <div class="stats-grid" id="statsGrid">
         <div class="stat-card">
-          <div class="stat-icon">👥</div>
-          <div class="stat-value" id="statTotalUsers">-</div>
-          <div class="stat-label">Total de Usuários</div>
+            <div class="stat-icon">👥</div>
+            <div class="stat-value" id="statTotalUsers">-</div>
+            <div class="stat-label">Total de Usuários</div>
         </div>
         <div class="stat-card">
-          <div class="stat-icon">🟢</div>
-          <div class="stat-value" id="statOnline">-</div>
-          <div class="stat-label">Online Agora</div>
+            <div class="stat-icon">🟢</div>
+            <div class="stat-value" id="statOnline">-</div>
+            <div class="stat-label">Online Agora</div>
         </div>
         <div class="stat-card">
-          <div class="stat-icon">💬</div>
-          <div class="stat-value" id="statMessages">-</div>
-          <div class="stat-label">Mensagens Enviadas</div>
+            <div class="stat-icon">💬</div>
+            <div class="stat-value" id="statMessages">-</div>
+            <div class="stat-label">Mensagens Enviadas</div>
         </div>
         <div class="stat-card">
-          <div class="stat-icon">🚫</div>
-          <div class="stat-value" id="statBanned">-</div>
-          <div class="stat-label">Usuários Banidos</div>
+            <div class="stat-icon">🚫</div>
+            <div class="stat-value" id="statBanned">-</div>
+            <div class="stat-label">Usuários Banidos</div>
         </div>
-      </div>
+        </div>
+    </section>
 
-      <!-- AÇÕES EM MASSA (apenas admin) -->
-        <div class="mass-actions" id="massActions" style="display:none; margin-bottom: 20px;">
+    <!-- AÇÕES EM MASSA (apenas admin) -->
+    <section class="mass-actions-section" id="massActions" style="display:none;">
+        <div class="mass-actions">
         <button class="btn-mass danger" onclick="deleteAllUsers()">
             🗑️ Apagar todos os usuários (exceto admins)
         </button>
@@ -60,59 +103,89 @@
             💬 Apagar todas as mensagens
         </button>
         </div>
+    </section>
 
-      <!-- CONTROLES DA TABELA -->
-      <div class="admin-controls">
-        <div class="search-box">
-          <input type="text" id="userSearch" placeholder="Buscar usuários..." class="search-input">
+    <!-- USUÁRIOS -->
+    <section class="users-section">
+        <div class="section-header">
+        <h2 class="section-title">👤 Usuários</h2>
+        <div class="admin-controls">
+            <div class="search-box">
+            <input type="text" id="userSearch" placeholder="Buscar usuários..." class="search-input">
+            </div>
+            <button class="btn-csv" onclick="exportCSV()">📥 Exportar CSV</button>
         </div>
-        <button class="btn-csv" onclick="exportCSV()">📥 Exportar CSV</button>
-      </div>
-      
-      <!-- TABELA DE USUÁRIOS -->
-      <div class="table-container">
+        </div>
+        
+        <div class="table-container table-scroll" style="max-height: 500px; overflow-y: auto;">
         <table class="admin-table">
-          <thead>
-            <tr>
-              <th data-sort="username" class="sortable" style="cursor:pointer;">Usuário <span class="sort-arrow asc">▲</span></th>
-              <th data-sort="email" class="col-email sortable" style="cursor:pointer;">Email <span class="sort-arrow"></span></th>
-              <th data-sort="role" class="col-role sortable" style="cursor:pointer;">Cargo <span class="sort-arrow"></span></th>
-              <th data-sort="status" class="sortable" style="cursor:pointer;">Status <span class="sort-arrow"></span></th>
-              <th class="col-edit">Ações</th>
-            </tr>
-          </thead>
-          <tbody id="usersTableBody">
-            <tr>
-              <td colspan="5">
-                <div class="skeleton" style="height:40px;margin:4px;"></div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <!-- LOGS DE ATIVIDADE -->
-      <div class="logs-section">
-        <h2 class="section-title">📋 Atividades Recentes</h2>
-        <div class="table-container">
-          <table class="admin-table">
             <thead>
-              <tr>
+            <tr>
+                <th data-sort="username" class="sortable" style="cursor:pointer;">Usuário <span class="sort-arrow asc">▲</span></th>
+                <th data-sort="email" class="col-email sortable" style="cursor:pointer;">Email <span class="sort-arrow"></span></th>
+                <th data-sort="role" class="col-role sortable" style="cursor:pointer;">Cargo <span class="sort-arrow"></span></th>
+                <th data-sort="status" class="sortable" style="cursor:pointer;">Status <span class="sort-arrow"></span></th>
+                <th class="col-edit">Ações</th>
+            </tr>
+            </thead>
+            <tbody id="usersTableBody">
+            <tr>
+                <td colspan="5">
+                <div class="skeleton" style="height:40px;margin:4px;"></div>
+                </td>
+            </tr>
+            </tbody>
+        </table>
+        </div>
+    </section>
+
+    <!-- ENQUETES (antes dos logs) -->
+    <section class="polls-section" id="pollsSection" style="display:none;">
+        <div class="section-header">
+        <h2 class="section-title">📊 Enquetes</h2>
+        <button class="btn-add-user" onclick="showCreatePollModal()">+ Nova Enquete</button>
+        </div>
+        <div class="table-container" style="max-height: 400px; overflow-y: auto;">
+        <table class="admin-table">
+            <thead>
+            <tr>
+                <th>Pergunta</th>
+                <th>Status</th>
+                <th>Criada em</th>
+                <th>Ações</th>
+            </tr>
+            </thead>
+            <tbody id="pollsTableBody">
+            <tr>
+                <td colspan="4" style="text-align:center;padding:20px;">Nenhuma enquete</td>
+            </tr>
+            </tbody>
+        </table>
+        </div>
+    </section>
+
+    <!-- LOGS DE ATIVIDADE -->
+    <section class="logs-section">
+        <h2 class="section-title">📋 Atividades Recentes</h2>
+        <div class="table-container" style="max-height: 400px; overflow-y: auto;">
+        <table class="admin-table">
+            <thead>
+            <tr>
                 <th>Usuário</th>
                 <th>Ação</th>
                 <th>Data/Hora</th>
-              </tr>
+            </tr>
             </thead>
             <tbody id="logsTableBody">
-              <tr>
+            <tr>
                 <td colspan="3">
-                  <div class="skeleton" style="height:40px;margin:4px;"></div>
+                <div class="skeleton" style="height:40px;margin:4px;"></div>
                 </td>
-              </tr>
+            </tr>
             </tbody>
-          </table>
+        </table>
         </div>
-      </div>
+    </section>
     </main>
   </div>
   
@@ -188,5 +261,14 @@
   <script src="../js/database.js"></script>
   <script src="../js/session.js"></script>
   <script src="script.js"></script>
+  <script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/service-worker.js')
+        .then(() => console.log('✅ Service Worker registrado'))
+        .catch((err) => console.log('❌ Service Worker falhou:', err));
+    });
+  }
+</script>
 </body>
 </html>

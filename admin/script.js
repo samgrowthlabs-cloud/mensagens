@@ -50,6 +50,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Ajustar interface conforme o cargo
     setupUIByRole(user);
+    loadPolls();
     
     // Remover opção "admin" dos selects (nunca pode ser atribuído)
     removeAdminOption();
@@ -83,6 +84,11 @@ function setupUIByRole(user) {
     const massActions = document.getElementById('massActions');
     if (massActions && user.role === 'admin') {
         massActions.style.display = 'flex';
+    }
+
+    if (user.role === 'admin') {
+    document.getElementById('pollsSection').style.display = 'block';
+    loadPolls();
     }
 }
 
@@ -214,6 +220,12 @@ async function createUser() {
         showToast('Email inválido', 'error');
         return;
     }
+
+    // ✅ Restrição de domínio adicionada aqui
+    if (!email.toLowerCase().endsWith('@bidjory.com')) {
+        showToast('Apenas e-mails @bidjory.com são permitidos', 'error');
+        return;
+    }
     
     if (!validateUsername(username)) {
         showToast('Username inválido (3-30 caracteres, apenas letras, números e _)', 'error');
@@ -229,7 +241,8 @@ async function createUser() {
         showToast('Erro ao criar usuário: ' + error.message, 'error');
     }
 
-    await databaseManager.logActivity(newUser.id, 'USER_CREATED');
+    // Se você estava chamando logActivity, pode manter (a variável newUser não existia, ajustei)
+    await databaseManager.logActivity(currentUserId, 'USER_CREATED', { username, email });
 }
 
 function showEditUserModal(userId) {
@@ -748,4 +761,154 @@ async function deleteAllMessages() {
       }
     }
   );
+}
+
+
+// ========== ENQUETES ==========
+async function loadPolls() {
+    const tbody = document.getElementById('pollsTableBody');
+    try {
+        const { data: polls, error } = await db
+            .from('polls')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(20);
+        
+        if (error) throw error;
+        if (!polls || polls.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--text-tertiary);">Nenhuma enquete</td></tr>';
+            return;
+        }
+        
+        tbody.innerHTML = polls.map(poll => `
+            <tr>
+                <td><strong>${escapeHtml(poll.question)}</strong></td>
+                <td><span class="poll-status ${poll.is_active ? 'active' : 'ended'}">${poll.is_active ? 'Ativa' : 'Encerrada'}</span></td>
+                <td>${formatTime(poll.created_at)}</td>
+                <td>
+                    <div class="action-buttons">
+                        <button class="btn-action" onclick="viewPollResults('${poll.id}')">📊 Resultados</button>
+                        ${poll.is_active ? 
+                            `<button class="btn-action danger" onclick="endPoll('${poll.id}')">🚫 Encerrar</button>` : ''
+                        }
+                        <button class="btn-action" onclick="deletePoll('${poll.id}')" style="color:#ef4444;border-color:#ef4444;">🗑️</button>
+                    </div>
+                </td>
+            </tr>
+        `).join('');
+    } catch (e) {
+        console.error(e);
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--accent-danger);">Erro ao carregar enquetes</td></tr>';
+    }
+}
+
+function showCreatePollModal() {
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+        <div class="modal" style="max-width:500px;">
+            <h2 class="modal-title">📊 Nova Enquete</h2>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Pergunta</label>
+                    <input type="text" id="pollQuestion" class="form-input" placeholder="Digite a pergunta...">
+                </div>
+                <div class="form-group">
+                    <label>Opções (uma por linha)</label>
+                    <textarea id="pollOptions" class="form-input" rows="5" placeholder="Opção 1&#10;Opção 2&#10;Opção 3"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-cancel" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
+                <button class="btn-save" id="createPollBtn">Criar Enquete</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    
+    document.getElementById('createPollBtn').onclick = async () => {
+        const question = document.getElementById('pollQuestion').value.trim();
+        const optionsText = document.getElementById('pollOptions').value.trim();
+        if (!question || !optionsText) {
+            showToast('Preencha todos os campos', 'error');
+            return;
+        }
+        const options = optionsText.split('\n').filter(o => o.trim() !== '');
+        if (options.length < 2) {
+            showToast('Adicione pelo menos 2 opções', 'error');
+            return;
+        }
+        
+        try {
+            await db.from('polls').insert({
+                question: question,
+                options: JSON.stringify(options),
+                created_by: currentUserId,
+                is_active: true
+            });
+            showToast('Enquete criada!', 'success');
+            modal.remove();
+            loadPolls();
+        } catch (e) {
+            showToast('Erro: ' + e.message, 'error');
+        }
+    };
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+}
+
+async function endPoll(pollId) {
+    showConfirmModal('Encerrar Enquete', 'Tem certeza que deseja encerrar esta enquete?', async () => {
+        await db.from('polls').update({ is_active: false, ended_at: new Date().toISOString() }).eq('id', pollId);
+        showToast('Enquete encerrada', 'success');
+        loadPolls();
+    });
+}
+
+async function deletePoll(pollId) {
+    showConfirmModal('Excluir Enquete', 'Isso apagará a enquete e todos os votos.', async () => {
+        await db.from('polls').delete().eq('id', pollId);
+        showToast('Enquete excluída', 'success');
+        loadPolls();
+    });
+}
+
+async function viewPollResults(pollId) {
+    const { data: poll } = await db.from('polls').select('*').eq('id', pollId).single();
+    if (!poll) return;
+    
+    const { data: votes } = await db.from('poll_votes').select('*').eq('poll_id', pollId);
+    const options = JSON.parse(poll.options);
+    const counts = new Array(options.length).fill(0);
+    (votes || []).forEach(v => { if (v.option_index < counts.length) counts[v.option_index]++; });
+    const total = counts.reduce((a, b) => a + b, 0);
+    
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+        <div class="modal" style="max-width:500px;">
+            <h2 class="modal-title">📊 Resultados: ${escapeHtml(poll.question)}</h2>
+            <div class="modal-body">
+                ${options.map((opt, i) => {
+                    const pct = total > 0 ? Math.round((counts[i] / total) * 100) : 0;
+                    return `
+                        <div style="margin-bottom:12px;">
+                            <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                                <span>${escapeHtml(opt)}</span>
+                                <span style="color:var(--text-secondary);">${counts[i]} voto(s) (${pct}%)</span>
+                            </div>
+                            <div style="background:var(--bg-tertiary);border-radius:8px;height:8px;overflow:hidden;">
+                                <div style="background:var(--accent-mod);height:100%;width:${pct}%;transition:width 0.3s;"></div>
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+                <p style="text-align:center;color:var(--text-tertiary);margin-top:16px;">Total de votos: ${total}</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-cancel" onclick="this.closest('.modal-overlay').remove()">Fechar</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
 }
