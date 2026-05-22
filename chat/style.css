@@ -480,3 +480,18 @@ body {
   }
   .message { max-width: 85%; }
 }
+
+.btn-admin {
+    padding: 8px;
+    border-radius: 8px;
+    font-size: 18px;
+    color: var(--text-tertiary);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    margin-left: 4px;
+}
+.btn-admin:hover {
+    background: var(--bg-hover);
+    color: var(--accent-mod);
+}

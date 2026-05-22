@@ -8,6 +8,10 @@ let lastMessageCheck = new Date().toISOString();
 let selectedCardElement = null;
 
 
+function goToAdmin() {
+    window.location.href = '/admin/';
+}
+
 
 // Corrigir imagens de avatar quebradas
 function setupImageFallback() {
@@ -112,6 +116,12 @@ function initializeUI(user) {
         const roleColor = getRoleColor(user.role);
         roleEl.style.color = roleColor;
         roleEl.textContent = user.role === 'admin' ? 'ADMIN' : user.role === 'moderator' ? 'MODERADOR' : 'USUÁRIO';
+    }
+
+    // Mostrar botão admin se for admin ou moderator
+    const btnAdmin = document.getElementById('btnAdminPanel');
+    if (btnAdmin && (user.role === 'admin' || user.role === 'moderator')) {
+        btnAdmin.style.display = 'block';
     }
 }
 

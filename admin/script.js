@@ -232,3 +232,8 @@ async function handleLogout() {
     await sessionManager.logout();
     window.location.href = '/login/index.html';
 }
+
+
+function goToChat() {
+    window.location.href = '/chat/index.html';
+}
