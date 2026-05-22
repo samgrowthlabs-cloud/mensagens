@@ -92,16 +92,19 @@ function renderUsersTable(users) {
         
         let actions = '';
         if (isAdmin) {
-            actions = `
-                <button class="btn-action" onclick="showEditUserModal('${user.id}')">Editar</button>
-                ${canBan ? 
-                    (user.is_banned ? 
-                        `<button class="btn-action success" onclick="toggleBanUser('${user.id}', false)">Desbanir</button>` :
-                        `<button class="btn-action danger" onclick="toggleBanUser('${user.id}', true)">Banir</button>`) : ''
-                }
-                <button class="btn-action warning" onclick="resetUserPassword('${user.id}')">Resetar</button>
-            `;
-        } else if (currentUserRole === 'moderator') {
+                actions = `
+                    <button class="btn-action" onclick="showEditUserModal('${user.id}')">Editar</button>
+                    ${canBan ? 
+                        (user.is_banned ? 
+                            `<button class="btn-action success" onclick="toggleBanUser('${user.id}', false)">Desbanir</button>` :
+                            `<button class="btn-action danger" onclick="toggleBanUser('${user.id}', true)">Banir</button>`) : ''
+                    }
+                    <button class="btn-action warning" onclick="resetUserPassword('${user.id}')">Resetar</button>
+                    ${!isSelf && user.role !== 'admin' ? 
+                        `<button class="btn-action" onclick="deleteUserConfirm('${user.id}')" style="background:rgba(239,68,68,0.1);color:#ef4444;border-color:#ef4444;">Excluir</button>` : ''
+                    }
+                `;
+            } else if (currentUserRole === 'moderator') {
             if (canBan) {
                 actions = user.is_banned ? 
                     `<button class="btn-action success" onclick="toggleBanUser('${user.id}', false)">Desbanir</button>` :
@@ -290,4 +293,26 @@ async function handleLogout() {
 
 function goToChat() {
     window.location.href = '/chat/index.html';
+}
+
+async function deleteUserConfirm(userId) {
+    const user = allUsers.find(u => u.id === userId);
+    if (!user) return;
+    
+    if (!confirm(`Tem certeza que deseja EXCLUIR permanentemente o usuário "${user.username}"?\n\nEsta ação não pode ser desfeita!`)) {
+        return;
+    }
+    
+    // Segunda confirmação para evitar acidentes
+    if (!confirm('Confirme novamente: isso apagará todas as mensagens e dados do usuário.')) {
+        return;
+    }
+    
+    try {
+        await databaseManager.deleteUser(userId);
+        showToast(`Usuário ${user.username} excluído com sucesso`, 'success');
+        await loadUsers();
+    } catch (error) {
+        showToast('Erro ao excluir usuário: ' + error.message, 'error');
+    }
 }

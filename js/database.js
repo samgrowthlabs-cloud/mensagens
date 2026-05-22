@@ -327,6 +327,18 @@ class DatabaseManager {
         await this.updateUserStatus(userId, 'offline');
     }
 
+    async deleteUser(userId) {
+        if (!db) throw new Error('Supabase não inicializado');
+        
+        const { error } = await db
+            .from('users')
+            .delete()
+            .eq('id', userId);
+        
+        if (error) throw error;
+        return true;
+    }
+
     // ============================================
     // OPERAÇÕES DE LOG
     // ============================================
