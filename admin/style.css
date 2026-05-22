@@ -570,3 +570,29 @@
 section {
   margin-bottom: 40px;
 }
+
+/* ========== ROLAGEM HORIZONTAL NAS TABELAS ========== */
+.table-container {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: var(--border-radius-lg);
+  border: 1px solid var(--border-color);
+}
+
+.admin-table {
+  min-width: 700px;      /* garante que as colunas não se espremam */
+  width: 100%;
+  white-space: nowrap;   /* impede quebra de texto dentro das células */
+}
+
+/* Opcional: destacar borda quando houver scroll */
+.table-container::-webkit-scrollbar {
+  height: 6px;
+}
+.table-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+.table-container::-webkit-scrollbar-thumb {
+  background: var(--bg-hover);
+  border-radius: 3px;
+}
