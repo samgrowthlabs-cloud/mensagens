@@ -54,3 +54,25 @@ self.addEventListener('fetch', (event) => {
       .catch(() => caches.match(event.request))
   );
 });
+
+self.addEventListener('fetch', (event) => {
+    // Ignorar requisições ao Supabase (API)
+    if (event.request.url.includes('supabase.co')) {
+        return;
+    }
+    // Para páginas HTML, sempre buscar da rede
+    if (event.request.destination === 'document') {
+        event.respondWith(fetch(event.request));
+        return;
+    }
+    // Para outros assets, network first com fallback
+    event.respondWith(
+        fetch(event.request)
+            .then(response => {
+                const clone = response.clone();
+                caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+                return response;
+            })
+            .catch(() => caches.match(event.request))
+    );
+});

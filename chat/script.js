@@ -540,12 +540,33 @@ function closeInfoPanel() { document.getElementById('infoPanel').style.display =
 function toggleSidebar() { document.getElementById('sidebar')?.classList.toggle('open'); document.querySelector('.sidebar-overlay')?.classList.toggle('active'); }
 
 async function handleLogout() {
+    // Para todos os intervalos e polling
     stopMessagePolling();
-    stopTypingPolling();
-    stopPollCheck();
-    if (currentUserId) await updateMyStatus('offline');
-    if (typingInterval) clearInterval(typingInterval);
+    if (typingInterval) {
+        clearInterval(typingInterval);
+        typingInterval = null;
+    }
+    if (pollCheckInterval) {
+        clearInterval(pollCheckInterval);
+        pollCheckInterval = null;
+    }
+    
+    // Atualiza status para offline
+    if (currentUserId) {
+        try {
+            await db.from('users').update({
+                status: 'offline',
+                last_seen: new Date().toISOString()
+            }).eq('id', currentUserId);
+        } catch (e) {
+            console.error('Erro ao atualizar status offline:', e);
+        }
+    }
+    
+    // Limpa a sessão
     await sessionManager.logout();
+    
+    // Redireciona para login
     window.location.href = '/login/index.html';
 }
 

@@ -194,6 +194,18 @@
   <script src="../js/session.js"></script>
   <script src="script.js"></script>
   <script>
+  // Limpar caches antigos do Service Worker
+  if ('serviceWorker' in navigator) {
+    caches.keys().then(keys => {
+      keys.forEach(key => {
+        if (key !== 'bidjorchat-v1') {
+          caches.delete(key);
+        }
+      });
+    });
+  }
+
+  // Registrar o Service Worker
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('/service-worker.js')
