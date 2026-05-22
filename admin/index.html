@@ -56,20 +56,21 @@
         <div class="search-box">
           <input type="text" id="userSearch" placeholder="Buscar usuários..." class="search-input">
         </div>
+        <button class="btn-csv" onclick="exportCSV()">📥 Exportar CSV</button>
       </div>
       
       <!-- TABELA DE USUÁRIOS -->
       <div class="table-container">
         <table class="admin-table">
           <thead>
-                <tr>
-                    <th data-sort="username" class="sortable">Usuário <span class="sort-arrow"></span></th>
-                    <th data-sort="email" class="col-email sortable">Email <span class="sort-arrow"></span></th>
-                    <th data-sort="role" class="col-role sortable">Cargo <span class="sort-arrow"></span></th>
-                    <th data-sort="status" class="sortable">Status <span class="sort-arrow"></span></th>
-                    <th class="col-edit">Ações</th>
-                </tr>
-           </thead>
+            <tr>
+              <th data-sort="username" class="sortable" style="cursor:pointer;">Usuário <span class="sort-arrow asc">▲</span></th>
+              <th data-sort="email" class="col-email sortable" style="cursor:pointer;">Email <span class="sort-arrow"></span></th>
+              <th data-sort="role" class="col-role sortable" style="cursor:pointer;">Cargo <span class="sort-arrow"></span></th>
+              <th data-sort="status" class="sortable" style="cursor:pointer;">Status <span class="sort-arrow"></span></th>
+              <th class="col-edit">Ações</th>
+            </tr>
+          </thead>
           <tbody id="usersTableBody">
             <tr>
               <td colspan="5">
