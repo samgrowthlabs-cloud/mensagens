@@ -13,7 +13,6 @@
   <link rel="stylesheet" href="style.css">
   
   <style>
-    /* Ajustes críticos para mobile */
     .no-chat-selected {
       flex: 1;
       display: flex;
@@ -29,11 +28,23 @@
       flex: 1;
       overflow-y: auto;
       padding: 16px;
-      display: none; /* escondido até selecionar alguém */
+      display: none;
     }
     
     .messages-container.active {
       display: block;
+    }
+
+    .typing-indicator {
+      padding: 4px 20px;
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-style: italic;
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
     }
   </style>
 </head>
@@ -87,17 +98,20 @@
         </div>
       </header>
       
-      <!-- Container de mensagens (oculto até selecionar) -->
+      <!-- Container de mensagens -->
       <div class="messages-container" id="messagesContainer"></div>
       
-      <!-- Estado vazio (fora do container) -->
+      <!-- Estado vazio -->
       <div class="no-chat-selected" id="noChatSelected">
         <div class="no-chat-icon">💬</div>
         <h2>BIDJORCHAT</h2>
         <p>Selecione um usuário para começar</p>
       </div>
-      
-      <!-- Input (oculto até selecionar) -->
+
+      <!-- Indicador de digitando -->
+      <div class="typing-indicator" id="typingIndicator" style="display:none;"></div>
+
+      <!-- Input de mensagem -->
       <div class="message-input-container" id="messageInputContainer" style="display: none;">
         <textarea 
           id="messageInput" 

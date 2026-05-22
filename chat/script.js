@@ -6,6 +6,10 @@ let currentUserId = null;
 let messagePollingInterval = null;
 let lastMessageCheck = new Date().toISOString();
 let selectedCardElement = null;
+let typingTimer = null;
+let typingInterval = null;
+let pollingTimeout = null;
+let pollingActive = false;
 
 
 // Corrigir imagens de avatar quebradas
@@ -33,6 +37,22 @@ function setupImageFallback() {
 
 function goToAdmin() {
     window.location.href = '/admin/index.html';
+}
+
+function playNotificationSound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    gain.gain.value = 0.1;
+    osc.frequency.value = 800;
+    osc.type = 'sine';
+    osc.start();
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+    osc.stop(ctx.currentTime + 0.3);
+  } catch(e) {}
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -69,11 +89,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     await updateMyStatus('online');
     await loadAllData(user.id);
     startMessagePolling(user.id);
+    typingInterval = setInterval(checkTypingStatus, 2000);
     setupEventListeners();
     
     window.addEventListener('beforeunload', async () => {
         stopMessagePolling();
+        stopTypingPolling();
         if (currentUserId) await updateMyStatus('offline');
+        if (typingInterval) clearInterval(typingInterval);
     });
 });
 
@@ -130,39 +153,74 @@ function getRoleColor(role) {
 // =============== POLLING ===============
 function startMessagePolling(userId) {
     stopMessagePolling();
-    console.log('🔄 Polling iniciado');
-    messagePollingInterval = setInterval(() => checkNewMessages(userId), 1000);
+    pollingActive = true;
+    console.log('🔄 Polling adaptativo iniciado');
+    scheduleNextPoll(userId);
 }
-
 function stopMessagePolling() {
-    if (messagePollingInterval) {
-        clearInterval(messagePollingInterval);
-        messagePollingInterval = null;
+    pollingActive = false;
+    if (pollingTimeout) {
+        clearTimeout(pollingTimeout);
+        pollingTimeout = null;
     }
 }
+
+function scheduleNextPoll(userId, delay = 1500) {
+    if (!pollingActive) return;
+    pollingTimeout = setTimeout(async () => {
+        await checkNewMessages(userId);
+        // Se a aba está oculta, espera 5s; se visível, 1.5s
+        const nextDelay = document.hidden ? 5000 : 1500;
+        scheduleNextPoll(userId, nextDelay);
+    }, delay);
+}
+
+// Reconectar ao voltar para a aba
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && pollingActive && currentUserId) {
+        console.log('👁️ Aba reativada – verificando novas mensagens...');
+        checkNewMessages(currentUserId);
+    }
+});
+
 
 async function checkNewMessages(userId) {
     if (!db || !userId) return;
     try {
-        const { data: messages } = await db
+        const { data: messages, error } = await db
             .from('messages')
             .select('*')
             .eq('receiver_id', userId)
             .eq('is_read', false)
             .gt('created_at', lastMessageCheck)
             .order('created_at', { ascending: true });
-        
+
+        if (error) {
+            console.warn('Erro ao verificar mensagens:', error.message);
+            return;
+        }
+
         if (messages && messages.length > 0) {
             for (const msg of messages) {
                 if (currentConversationUser && msg.sender_id === currentConversationUser.id) {
                     appendMessage(msg);
                 }
-                await db.from('messages').update({ is_read: true, read_at: new Date().toISOString() }).eq('id', msg.id);
+                await db.from('messages').update({
+                    is_read: true,
+                    read_at: new Date().toISOString()
+                }).eq('id', msg.id);
             }
             await loadConversations(userId);
             lastMessageCheck = new Date().toISOString();
+
+            // Som de notificação se aba estiver oculta
+            if (document.hidden) {
+                playNotificationSound();
+            }
         }
-    } catch (e) {}
+    } catch (e) {
+        console.warn('Falha na verificação de mensagens:', e.message);
+    }
 }
 
 // =============== CARREGAR DADOS ===============
@@ -292,7 +350,13 @@ function setupEventListeners() {
     if (msgInput) {
         msgInput.addEventListener('input', function() { this.style.height = 'auto'; this.style.height = Math.min(this.scrollHeight, 120) + 'px'; });
         msgInput.addEventListener('keydown', function(e) { if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } });
+        // Status de digitação
+        msgInput.addEventListener('input', function() {
+        sendTypingStatus();
+        });
     }
+
+    
 }
 
 function searchUsers(term) {
@@ -474,7 +538,9 @@ function toggleSidebar() { document.getElementById('sidebar')?.classList.toggle(
 
 async function handleLogout() {
     stopMessagePolling();
+    stopTypingPolling();
     if (currentUserId) await updateMyStatus('offline');
+    if (typingInterval) clearInterval(typingInterval);
     await sessionManager.logout();
     window.location.href = '/login/index.html';
 }
@@ -575,4 +641,52 @@ async function handleAvatarUpload(event) {
         console.error('Erro no upload:', error);
         showToast('Falha ao processar imagem', 'error');
     }
+}
+
+async function sendTypingStatus() {
+  if (!currentConversationUser || !currentUserId) return;
+  
+  clearTimeout(typingTimer);
+  try {
+    await db.from('typing_status').upsert({
+      user_id: currentUserId,
+      contact_id: currentConversationUser.id,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'user_id,contact_id' });
+  } catch(e) {}
+  
+  typingTimer = setTimeout(async () => {
+    try {
+      await db.from('typing_status')
+        .delete()
+        .eq('user_id', currentUserId)
+        .eq('contact_id', currentConversationUser.id);
+    } catch(e) {}
+  }, 3000);
+}
+
+async function checkTypingStatus() {
+  if (!currentConversationUser || !currentUserId) {
+    document.getElementById('typingIndicator').style.display = 'none';
+    return;
+  }
+  
+  try {
+    const { data } = await db.from('typing_status')
+      .select('*')
+      .eq('user_id', currentConversationUser.id)
+      .eq('contact_id', currentUserId)
+      .gt('updated_at', new Date(Date.now() - 4000).toISOString())
+      .maybeSingle();
+    
+    const indicator = document.getElementById('typingIndicator');
+    if (data) {
+      indicator.textContent = `${currentConversationUser.username} está digitando...`;
+      indicator.style.display = 'block';
+    } else {
+      indicator.style.display = 'none';
+    }
+  } catch(e) {
+    document.getElementById('typingIndicator').style.display = 'none';
+  }
 }

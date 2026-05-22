@@ -495,3 +495,16 @@ body {
     background: var(--bg-hover);
     color: var(--accent-mod);
 }
+
+/* Indicador de digitando */
+.typing-indicator {
+  padding: 4px 20px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-style: italic;
+  animation: pulse 1.5s infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
