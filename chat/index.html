@@ -3,27 +3,27 @@
 <head>
   <meta charset="UTF-8">
   <!-- Favicon -->
-<link rel="icon" type="image/png" sizes="32x32" href="/assets/icons/icon-32.png">
-<link rel="icon" type="image/png" sizes="16x16" href="/assets/icons/icon-16.png">
-<link rel="apple-touch-icon" href="/assets/icons/icon-192.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/icons/icon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/assets/icons/icon-16.png">
+  <link rel="apple-touch-icon" href="/assets/icons/icon-192.png">
   <!-- PWA -->
-<link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#0a0a0a">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="BIDJORCHAT">
-<link rel="apple-touch-icon" href="/assets/icons/icon-192.png">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#0a0a0a">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="BIDJORCHAT">
+  <link rel="apple-touch-icon" href="/assets/icons/icon-192.png">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>BIDJORCHAT</title>
-  
+
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  
+
   <link rel="stylesheet" href="../styles/variables.css">
   <link rel="stylesheet" href="../styles/global.css">
   <link rel="stylesheet" href="../styles/responsive.css">
   <link rel="stylesheet" href="style.css">
-  
+
   <style>
     .no-chat-selected {
       flex: 1;
@@ -35,14 +35,14 @@
       text-align: center;
       padding: 20px;
     }
-    
+
     .messages-container {
       flex: 1;
       overflow-y: auto;
       padding: 16px;
       display: none;
     }
-    
+
     .messages-container.active {
       display: block;
     }
@@ -58,64 +58,107 @@
       0%, 100% { opacity: 1; }
       50% { opacity: 0.5; }
     }
+
+    .status-message {
+      font-size: 12px;
+      color: #8b5cf6;
+      margin-top: 2px;
+    }
   </style>
 </head>
 <body>
   <div class="chat-layout">
     <!-- Overlay mobile -->
     <div class="sidebar-overlay" onclick="toggleSidebar()"></div>
-    
+
     <!-- Sidebar -->
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-header">
-        <div class="user-profile-header">
-          <div class="user-avatar" id="currentUserAvatar" onclick="showProfileModal()">
+        <div class="user-profile-header" onclick="showProfileModal()">
+          <div class="user-avatar" id="currentUserAvatar">
             <span id="currentUserInitials">?</span>
           </div>
           <div class="user-info-header">
             <div class="username-header" id="currentUsername">Carregando...</div>
             <div class="role-header" id="currentUserRole"></div>
+            <div class="status-message" id="currentStatusMessage" style="display:none;"></div>
           </div>
         </div>
-        <button class="btn-logout" onclick="handleLogout()" title="Sair">🚪</button>
-        <button class="btn-admin" id="btnAdminPanel" onclick="goToAdmin()" title="Painel Admin" style="display:none;">🔧</button>
+        <button class="btn-logout" onclick="handleLogout()" title="Sair">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+            <polyline points="16 17 21 12 16 7"/>
+            <line x1="21" y1="12" x2="9" y2="12"/>
+          </svg>
+        </button>
+        <button class="btn-admin" id="btnAdminPanel" onclick="goToAdmin()" title="Painel Admin" style="display:none;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
+          </svg>
+        </button>
+        <button class="btn-geral" onclick="window.location.href='/mensagem_geral/index.html'" title="Chat Geral">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+        </button>
       </div>
-      
+
       <div class="search-container">
         <div class="search-input-wrapper">
-          <span class="search-icon">🔍</span>
-          <input 
-            type="text" 
-            id="userSearch" 
-            placeholder="Buscar usuários..." 
+          <span class="search-icon" style="display:none;"></span>
+          <input
+            type="text"
+            id="userSearch"
+            placeholder="Buscar usuários..."
             class="search-input"
             autocomplete="off"
           >
         </div>
       </div>
-      
+
       <div class="users-list" id="usersList">
         <div class="skeleton" style="height:60px; margin:8px;"></div>
         <div class="skeleton" style="height:60px; margin:8px;"></div>
         <div class="skeleton" style="height:60px; margin:8px;"></div>
       </div>
     </aside>
-    
+
     <!-- Chat Principal -->
     <main class="chat-main">
       <header class="chat-header mobile-only">
-        <button class="btn-menu" onclick="toggleSidebar()">☰</button>
+        <button class="btn-menu" onclick="toggleSidebar()">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="3" y1="6" x2="21" y2="6"/>
+            <line x1="3" y1="12" x2="21" y2="12"/>
+            <line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+        </button>
         <div class="chat-header-user" id="chatHeaderUser">
           <span>BIDJORCHAT</span>
         </div>
       </header>
+
+      <!-- Barra de informações do contato (WhatsApp style) -->
+      <div class="user-info-bar" id="userInfoBar" style="display:none;">
+
+        <div class="info-avatar" id="infoAvatar"></div>
+        <div class="info-text">
+          <div class="info-name" id="infoName"></div>
+          <div class="info-details" id="infoDetails"></div>
+        </div>
+      </div>
+
+      <div class="announcement-banner" id="announcementBanner" style="display:none;"></div>
+
       
+
       <!-- Container de mensagens -->
       <div class="messages-container" id="messagesContainer"></div>
-      
+
       <!-- Estado vazio -->
       <div class="no-chat-selected" id="noChatSelected">
-        <div class="no-chat-icon">💬</div>
+        <div class="no-chat-icon"></div>
         <h2>BIDJORCHAT</h2>
         <p>Selecione um usuário para começar</p>
       </div>
@@ -124,21 +167,21 @@
       <div class="typing-indicator" id="typingIndicator" style="display:none;"></div>
 
       <!-- Enquete ativa -->
-     <div class="poll-banner" id="pollBanner" style="display:none;"></div>
+      <div class="poll-banner" id="pollBanner" style="display:none;"></div>
 
       <!-- Input de mensagem -->
       <div class="message-input-container" id="messageInputContainer" style="display: none;">
-        <textarea 
-          id="messageInput" 
-          placeholder="Mensagem..." 
+        <textarea
+          id="messageInput"
+          placeholder="Mensagem..."
           rows="1"
           maxlength="5000"
         ></textarea>
         <button class="btn-send" onclick="sendMessage()" title="Enviar">➤</button>
       </div>
     </main>
-    
-    <!-- Painel de info -->
+
+    <!-- Painel de info (lateral – mantido para compatibilidade) -->
     <aside class="info-panel" id="infoPanel" style="display: none;">
       <div class="info-panel-header">
         <button class="btn-close-panel" onclick="closeInfoPanel()">✕</button>
@@ -146,7 +189,7 @@
       <div class="info-panel-content" id="infoPanelContent"></div>
     </aside>
   </div>
-  
+
   <!-- Modal de Perfil -->
   <div id="profileModal" class="modal-overlay" style="display: none;">
     <div class="modal">
@@ -162,17 +205,22 @@
               Alterar foto
             </button>
           </div>
-          
+
           <div class="form-group">
             <label>Username</label>
             <input type="text" id="editUsername" class="form-input">
           </div>
-          
+
+          <div class="form-group">
+            <label>Status</label>
+            <input type="text" id="editStatusMessage" class="form-input" placeholder="Ex: Disponível, Ocupado...">
+          </div>
+
           <div class="form-group">
             <label>Nova Senha (opcional)</label>
             <input type="password" id="editNewPassword" class="form-input" placeholder="Deixe em branco">
           </div>
-          
+
           <div class="form-group">
             <label>Senha Atual</label>
             <input type="password" id="editCurrentPassword" class="form-input" placeholder="Obrigatória">
@@ -185,7 +233,7 @@
       </div>
     </div>
   </div>
-  
+
   <!-- Scripts na ordem correta -->
   <script src="../js/config.js"></script>
   <script src="../js/utils.js"></script>
@@ -194,25 +242,25 @@
   <script src="../js/session.js"></script>
   <script src="script.js"></script>
   <script>
-  // Limpar caches antigos do Service Worker
-  if ('serviceWorker' in navigator) {
-    caches.keys().then(keys => {
-      keys.forEach(key => {
-        if (key !== 'bidjorchat-v1') {
-          caches.delete(key);
-        }
+    // Limpar caches antigos do Service Worker
+    if ('serviceWorker' in navigator) {
+      caches.keys().then(keys => {
+        keys.forEach(key => {
+          if (key !== 'bidjorchat-v1') {
+            caches.delete(key);
+          }
+        });
       });
-    });
-  }
+    }
 
-  // Registrar o Service Worker
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/service-worker.js')
-        .then(() => console.log('✅ Service Worker registrado'))
-        .catch((err) => console.log('❌ Service Worker falhou:', err));
-    });
-  }
-</script>
+    // Registrar o Service Worker
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/service-worker.js')
+          .then(() => console.log('✅ Service Worker registrado'))
+          .catch((err) => console.log('❌ Service Worker falhou:', err));
+      });
+    }
+  </script>
 </body>
 </html>

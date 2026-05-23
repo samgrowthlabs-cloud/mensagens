@@ -146,17 +146,23 @@ class DatabaseManager {
     // OPERAÇÕES DE MENSAGEM
     // ============================================
     
-    async sendMessage(senderId, receiverId, content) {
+    async sendMessage(senderId, receiverId, content, replyTo = null) {
         if (!db) throw new Error('Supabase não inicializado');
+        
+        const messageData = {
+            sender_id: senderId,
+            receiver_id: receiverId,
+            content: content,
+            is_read: false
+        };
+        
+        if (replyTo) {
+            messageData.reply_to = replyTo;
+        }
         
         const { data, error } = await db
             .from('messages')
-            .insert({
-                sender_id: senderId,
-                receiver_id: receiverId,
-                content: content,
-                is_read: false
-            })
+            .insert(messageData)
             .select()
             .single();
         

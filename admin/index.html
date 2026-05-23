@@ -71,38 +71,54 @@
     <section class="stats-section">
         <div class="stats-grid" id="statsGrid">
         <div class="stat-card">
-            <div class="stat-icon">👥</div>
-            <div class="stat-value" id="statTotalUsers">-</div>
-            <div class="stat-label">Total de Usuários</div>
+          <div class="stat-icon">👥</div>
+          <div class="stat-value" id="statTotalUsers">-</div>
+          <div class="stat-label">Total de Usuários</div>
         </div>
         <div class="stat-card">
-            <div class="stat-icon">🟢</div>
-            <div class="stat-value" id="statOnline">-</div>
-            <div class="stat-label">Online Agora</div>
+          <div class="stat-icon">🟢</div>
+          <div class="stat-value" id="statOnline">-</div>
+          <div class="stat-label">Online Agora</div>
         </div>
         <div class="stat-card">
-            <div class="stat-icon">💬</div>
-            <div class="stat-value" id="statMessages">-</div>
-            <div class="stat-label">Mensagens Enviadas</div>
+          <div class="stat-icon">💬</div>
+          <div class="stat-value" id="statPrivateMessages">-</div>
+          <div class="stat-label">Mensagens Privadas</div>
         </div>
         <div class="stat-card">
-            <div class="stat-icon">🚫</div>
-            <div class="stat-value" id="statBanned">-</div>
-            <div class="stat-label">Usuários Banidos</div>
+          <div class="stat-icon">🌐</div>
+          <div class="stat-value" id="statGeralMessages">-</div>
+          <div class="stat-label">Mensagens Geral</div>
         </div>
+        <div class="stat-card">
+          <div class="stat-icon">📊</div>
+          <div class="stat-value" id="statTotalMessages">-</div>
+          <div class="stat-label">Total de Mensagens</div>
         </div>
+        <div class="stat-card">
+          <div class="stat-icon">🚫</div>
+          <div class="stat-value" id="statBanned">-</div>
+          <div class="stat-label">Usuários Banidos</div>
+        </div>
+      </div>
     </section>
 
     <!-- AÇÕES EM MASSA (apenas admin) -->
     <section class="mass-actions-section" id="massActions" style="display:none;">
-        <div class="mass-actions">
+      <div class="mass-actions">
         <button class="btn-mass danger" onclick="deleteAllUsers()">
-            🗑️ Apagar todos os usuários (exceto admins)
+          🗑️ Apagar todos os usuários (exceto admins)
+        </button>
+        <button class="btn-mass danger" onclick="deleteAllPrivateMessages()">
+          💬 Apagar mensagens privadas
+        </button>
+        <button class="btn-mass danger" onclick="deleteAllGeralMessages()">
+          🌐 Apagar mensagens gerais
         </button>
         <button class="btn-mass danger" onclick="deleteAllMessages()">
-            💬 Apagar todas as mensagens
+          ⚠️ Apagar TODAS as mensagens
         </button>
-        </div>
+      </div>
     </section>
 
     <!-- USUÁRIOS -->
@@ -163,6 +179,30 @@
         </table>
         </div>
     </section>
+
+
+    <!-- ANÚNCIOS (apenas admin) -->
+  <section class="announcements-section" id="announcementsSection" style="display:none;">
+    <div class="section-header">
+      <h2 class="section-title">📢 Anúncios</h2>
+      <button class="btn-add-user" onclick="showCreateAnnouncementModal()">+ Novo Anúncio</button>
+    </div>
+    <div class="table-container" style="max-height: 400px; overflow-y: auto;">
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Título</th>
+            <th>Conteúdo</th>
+            <th>Criado em</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody id="announcementsTableBody">
+          <tr><td colspan="4" style="text-align:center;padding:20px;">Nenhum anúncio</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
 
     <!-- LOGS DE ATIVIDADE -->
     <section class="logs-section">

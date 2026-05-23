@@ -596,3 +596,88 @@ section {
   background: var(--bg-hover);
   border-radius: 3px;
 }
+
+/* Input de opção de enquete */
+.poll-option-row .form-input {
+    transition: border-color 0.2s;
+}
+.poll-option-row .form-input:focus {
+    border-color: var(--accent-mod);
+}
+.btn-remove-option:hover {
+    background: rgba(239, 68, 68, 0.1) !important;
+    border-color: #ef4444 !important;
+    color: #ef4444 !important;
+}
+#addOptionBtn:hover {
+    border-color: var(--accent-mod);
+    color: var(--text-primary);
+}
+
+/* Linha de opção da enquete */
+.poll-option-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+    align-items: center;
+}
+.poll-option-input {
+    flex: 1;
+}
+.btn-remove-option {
+    background: none;
+    border: 1px solid var(--border-subtle);
+    color: var(--text-secondary);
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--transition);
+    flex-shrink: 0;
+}
+.btn-remove-option:hover {
+    background: var(--bg-hover);
+    color: var(--accent-danger);
+    border-color: var(--accent-danger);
+}
+.btn-add-option {
+    background: none;
+    border: 1px dashed var(--border-subtle);
+    color: var(--text-secondary);
+    padding: 8px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    width: 100%;
+    transition: all var(--transition);
+    margin-top: 4px;
+}
+.btn-add-option:hover {
+    border-color: var(--accent-mod);
+    color: var(--accent-mod);
+    background: rgba(139, 92, 246, 0.05);
+}
+
+/* Tabela de enquetes com scroll horizontal */
+.polls-section .table-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+.polls-section .admin-table {
+    min-width: 600px;
+}
+
+.mass-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+
+.announcements-section {
+  margin-top: 40px;
+}

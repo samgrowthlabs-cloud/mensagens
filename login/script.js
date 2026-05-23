@@ -92,7 +92,7 @@ function redirectAfterLogin() {
     if (user && user.role === 'admin') {
         window.location.href = '/admin/';
     } else {
-        window.location.href = '/chat/';
+        window.location.href = '/mensagem_geral/';
     }
 }
 
