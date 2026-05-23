@@ -57,6 +57,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     startAnnouncementCheck();
     
     window.addEventListener('beforeunload', async () => {
+        if (rateLimitTimerInterval) clearInterval(rateLimitTimerInterval);
         stopPolling();
         if (currentUser) {
             await db.from('users').update({ status: 'offline', last_seen: new Date().toISOString() }).eq('id', currentUser.id);
@@ -114,16 +115,36 @@ function renderMessage(msg, prepend = false) {
     const container = document.getElementById('geralMessages');
     const user = allUsers[msg.user_id] || { username: 'Desconhecido', role: 'user', avatar_url: null };
     const isOwn = msg.user_id === currentUser.id;
+    const isModOrAdmin = currentUser.role === 'moderator' || currentUser.role === 'admin';
+    const canEdit = (isOwn && isMessageEditable(msg.created_at)) || (currentUser.role === 'admin' || currentUser.role === 'moderator');
+    const canDelete = isOwn || (currentUser.role === 'admin' || currentUser.role === 'moderator');
+    
     const roleColor = getRoleColor(user.role);
     
     const div = document.createElement('div');
     div.className = 'geral-message' + (isOwn ? ' geral-message-own' : '');
     div.id = `msg-${msg.id}`;
+    div.dataset.messageId = msg.id;
     
-    // Referência da mensagem respondida – busca o nome correto
+    // Se a mensagem foi deletada (soft delete), mostrar diferente
+    if (msg.deleted) {
+        div.innerHTML = `
+            <div class="geral-message-avatar"><span>🗑️</span></div>
+            <div class="geral-message-content">
+                <div class="geral-message-header">
+                    <span class="geral-message-username" style="color:${roleColor}">${escapeHtml(user.username)}</span>
+                    <span class="geral-message-time">${formatTime(msg.created_at)}</span>
+                </div>
+                <div class="geral-message-text" style="font-style:italic; color:#6b6b6b;">[Mensagem excluída]</div>
+            </div>
+        `;
+        container.appendChild(div);
+        return;
+    }
+    
+    // Referência da mensagem respondida
     let replyRefHTML = '';
     if (msg.reply_to) {
-        // Tenta achar o usuário respondido no cache; se não existir, usa fallback
         const repliedUser = allUsers[msg.reply_to.user_id];
         const repliedUsername = repliedUser?.username || msg.reply_to?.username || 'Usuário';
         replyRefHTML = `
@@ -133,6 +154,22 @@ function renderMessage(msg, prepend = false) {
             </div>
         `;
     }
+    
+    // Botões de ação (editar/excluir)
+    let actionsHTML = '';
+    if (canEdit || canDelete) {
+        actionsHTML = `<div class="geral-message-actions">`;
+        if (canEdit && !msg.edited && isMessageEditable(msg.created_at)) {
+            actionsHTML += `<button class="msg-action-btn edit-btn" onclick="event.stopPropagation(); showEditGeralModal('${msg.id}', '${escapeHtml(msg.content).replace(/'/g, "\\'")}')">Editar</button>`;
+        }
+        if (canDelete) {
+            actionsHTML += `<button class="msg-action-btn delete-btn" onclick="event.stopPropagation(); confirmDeleteGeralMessage('${msg.id}')">Excluir</button>`;
+        }
+        actionsHTML += `</div>`;
+    }
+    
+    // Texto da mensagem com marcação de edição
+    const editedMark = msg.edited ? ' <span class="edited-mark">(editado)</span>' : '';
     
     div.innerHTML = `
         <div class="geral-message-avatar" onclick="showUserProfile('${user.id || msg.user_id}')">
@@ -145,8 +182,11 @@ function renderMessage(msg, prepend = false) {
                 <span class="geral-message-time">${formatTime(msg.created_at)}</span>
             </div>
             ${replyRefHTML}
-            <div class="geral-message-text">${escapeHtml(msg.content)}</div>
-            <button class="geral-message-reply-btn" onclick="event.stopPropagation(); replyTo('${msg.id}', '${escapeHtml(user.username).replace(/'/g, "\\'")}', '${escapeHtml(msg.content).replace(/'/g, "\\'")}')">↩ Responder</button>
+            <div class="geral-message-text">${escapeHtml(msg.content)}${editedMark}</div>
+            <div class="geral-message-footer">
+                <button class="geral-message-reply-btn" onclick="event.stopPropagation(); replyTo('${msg.id}', '${escapeHtml(user.username).replace(/'/g, "\\'")}', '${escapeHtml(msg.content).replace(/'/g, "\\'")}')">↩ Responder</button>
+                ${actionsHTML}
+            </div>
         </div>
     `;
     
@@ -156,6 +196,50 @@ function renderMessage(msg, prepend = false) {
         container.appendChild(div);
         container.scrollTop = container.scrollHeight;
     }
+}
+
+function showEditGeralModal(messageId, currentContent) {
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+        <div class="modal" style="max-width: 480px;">
+            <h2 class="modal-title">Editar mensagem</h2>
+            <div class="modal-body">
+                <textarea id="editMsgInput" class="form-input" rows="4" style="width:100%;">${escapeHtml(currentContent)}</textarea>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-cancel" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
+                <button class="btn-save" id="saveEditBtn">Salvar</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    
+    const textarea = modal.querySelector('#editMsgInput');
+    textarea.focus();
+    
+    document.getElementById('saveEditBtn').onclick = async () => {
+        const newContent = textarea.value.trim();
+        if (!newContent || newContent === currentContent) {
+            modal.remove();
+            return;
+        }
+        try {
+            const { error } = await db
+                .from('geral_messages')
+                .update({ content: newContent, edited: true, edited_at: new Date().toISOString() })
+                .eq('id', messageId)
+                .eq('user_id', currentUser.id);
+            
+            if (error) throw error;
+            
+            showToast('Mensagem editada!', 'success');
+            modal.remove();
+            await loadGeralMessages();
+        } catch (e) {
+            showToast('Erro ao editar: ' + e.message, 'error');
+        }
+    };
 }
 
 function getRoleColor(role) {
@@ -261,6 +345,14 @@ async function sendGeralMessage() {
     const content = input.value.trim();
     if (!content) return;
     
+    // ⬇️ VERIFICAÇÃO DE RATE LIMIT
+    try {
+        await databaseManager.checkRateLimit(currentUser.id, 'geral');
+    } catch (rateError) {
+        showToast(rateError.message, 'warning');
+        return;
+    }
+    
     input.disabled = true;
     
     const messageData = {
@@ -296,6 +388,18 @@ async function sendGeralMessage() {
     } finally {
         input.disabled = false;
         input.focus();
+    }
+
+    try {
+        await databaseManager.checkRateLimit(currentUser.id, 'geral');
+        } catch (rateError) {
+            const match = rateError.message.match(/(\d+)\s+segundo/);
+            if (match) {
+                showRateLimitNotification(parseInt(match[1]));
+            } else {
+                showToast(rateError.message, 'warning');
+            }
+            return;
     }
 }
 
@@ -436,6 +540,39 @@ function closeProfileModal() {
     document.getElementById('userProfileModal').style.display = 'none';
 }
 
+async function confirmDeleteGeralMessage(messageId) {
+    if (!confirm('Excluir esta mensagem permanentemente?')) return;
+    try {
+        // Buscar a mensagem primeiro para verificar permissão (se não for admin/moderador, só pode excluir a sua)
+        const { data: msg, error: fetchError } = await db
+            .from('geral_messages')
+            .select('user_id')
+            .eq('id', messageId)
+            .single();
+        
+        if (fetchError) throw new Error('Mensagem não encontrada');
+        
+        const isAuthor = msg.user_id === currentUser.id;
+        const isModOrAdmin = currentUser.role === 'moderator' || currentUser.role === 'admin';
+        
+        if (!isAuthor && !isModOrAdmin) {
+            showToast('Você não tem permissão para excluir esta mensagem', 'error');
+            return;
+        }
+        
+        const { error } = await db
+            .from('geral_messages')
+            .update({ deleted: true, deleted_at: new Date().toISOString() })
+            .eq('id', messageId);
+        
+        if (error) throw error;
+        
+        showToast('Mensagem excluída', 'success');
+        await loadGeralMessages(); // recarregar todas
+    } catch (e) {
+        showToast('Erro ao excluir: ' + e.message, 'error');
+    }
+}
 // ========== AÇÕES DE MODERAÇÃO ==========
 async function toggleBan(userId, ban) {
     try {

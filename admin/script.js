@@ -6,7 +6,7 @@ let currentUserId = null;
 let currentSort = { field: 'username', direction: 'asc' };
 let filteredUsers = [];
 let statsInterval = null;
-let reactionsPollInterval = null; // <-- polling das reações
+let reactionsPollInterval = null; // polling das reações dos anúncios
 
 document.addEventListener('DOMContentLoaded', async () => {
     // Verificar autenticação
@@ -33,6 +33,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
     }
 
+    // Ordenação da tabela
     document.querySelectorAll('.sortable').forEach(th => {
         th.addEventListener('click', () => {
             const field = th.dataset.sort;
@@ -53,11 +54,27 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Ajustar interface conforme o cargo
     setupUIByRole(user);
     
-    // Carregar enquetes e anúncios (se admin)
+    // Carregar enquetes e anúncios (apenas admin)
     if (user.role === 'admin') {
         loadPolls();
         loadAnnouncements();
-        startReactionsPolling(); // <-- inicia polling das reações
+        startReactionsPolling();
+    }
+    
+    // Rate Limit: carregar configurações e salvar (admin E moderador)
+    if (user.role === 'admin' || user.role === 'moderator') {
+        await loadRateLimitSettings();
+        const saveBtn = document.getElementById('saveRateLimitBtn');
+        if (saveBtn) {
+            saveBtn.addEventListener('click', saveRateLimitSettings);
+        }
+    }
+    
+    // Inicializar seleção em massa (apenas admin)
+    if (user.role === 'admin') {
+        initMassSelect();
+        const applyBtn = document.getElementById('applyMassRoleBtn');
+        if (applyBtn) applyBtn.addEventListener('click', applyMassRole);
     }
     
     removeAdminOption();
@@ -83,29 +100,104 @@ function setupUIByRole(user) {
         badge.style.background = user.role === 'admin' ? 'var(--accent-admin)' : 'var(--accent-moderator)';
     }
     
+    // Botão "Novo Usuário" apenas para admin
     const btnAdd = document.getElementById('btnAddUser') || document.querySelector('.btn-add-user');
     if (btnAdd && user.role !== 'admin') btnAdd.style.display = 'none';
     
+    // Moderador não vê colunas Email e Cargo na tabela de usuários
     if (user.role === 'moderator') {
         document.querySelectorAll('.col-email, .col-role').forEach(el => el.classList.add('hidden'));
     }
-
+    
+    // Ações em massa (apenas admin)
     const massActions = document.getElementById('massActions');
     if (massActions && user.role === 'admin') massActions.style.display = 'flex';
-
+    
+    // Container de seleção de cargo em massa (apenas admin)
+    const massRoleContainer = document.getElementById('massRoleContainer');
+    if (massRoleContainer) {
+        massRoleContainer.style.display = user.role === 'admin' ? 'flex' : 'none';
+    }
+    
+    // Seções exclusivas de admin
     if (user.role === 'admin') {
-        document.getElementById('pollsSection').style.display = 'block';
-        document.getElementById('announcementsSection').style.display = 'block';
+        const pollsSec = document.getElementById('pollsSection');
+        if (pollsSec) pollsSec.style.display = 'block';
+        const announcementsSec = document.getElementById('announcementsSection');
+        if (announcementsSec) announcementsSec.style.display = 'block';
+    }
+    
+    // Rate Limit: aparece para admin e moderador
+    const rateLimitSection = document.getElementById('rateLimitSection');
+    if (rateLimitSection) {
+        rateLimitSection.style.display = (user.role === 'admin' || user.role === 'moderator') ? 'block' : 'none';
     }
 }
 
-function removeAdminOption() {
-    document.querySelectorAll('select.form-input option[value="admin"]').forEach(opt => opt.remove());
+// ========== RATE LIMIT (CONTROLE DE SPAM) ==========
+async function loadRateLimitSettings() {
+    try {
+        const settings = await databaseManager.getRateLimitSettings();
+        document.getElementById('rateMaxMessages').value = settings.maxMessages;
+        document.getElementById('rateWindowSeconds').value = settings.windowSeconds;
+        document.getElementById('rateBlockSeconds').value = settings.blockSeconds;
+    } catch (e) {
+        console.warn('Erro ao carregar configurações de rate limit:', e);
+    }
 }
 
-function getRoleColor(role) {
-    const colors = { 'admin': '#dc2626', 'moderator': '#7c3aed', 'user': '#a0a0a0' };
-    return colors[role] || colors.user;
+async function saveRateLimitSettings() {
+    const max = parseInt(document.getElementById('rateMaxMessages').value);
+    const windowSec = parseInt(document.getElementById('rateWindowSeconds').value);
+    const blockSec = parseInt(document.getElementById('rateBlockSeconds').value);
+    if (isNaN(max) || isNaN(windowSec) || isNaN(blockSec)) {
+        showToast('Valores inválidos', 'error');
+        return;
+    }
+    try {
+        await databaseManager.saveRateLimitSettings(max, windowSec, blockSec);
+        showToast('Configurações salvas com sucesso!', 'success');
+    } catch (e) {
+        showToast('Erro ao salvar: ' + e.message, 'error');
+    }
+}
+
+// ========== SELEÇÃO EM MASSA (APENAS ADMIN) ==========
+function initMassSelect() {
+    const selectAll = document.getElementById('selectAllUsers');
+    if (!selectAll) return;
+    selectAll.addEventListener('change', (e) => {
+        document.querySelectorAll('.user-select-checkbox').forEach(cb => {
+            cb.checked = e.target.checked;
+        });
+    });
+}
+
+async function applyMassRole() {
+    const selected = Array.from(document.querySelectorAll('.user-select-checkbox:checked'))
+        .map(cb => cb.dataset.userId);
+    if (selected.length === 0) {
+        showToast('Nenhum usuário selecionado', 'warning');
+        return;
+    }
+    const newRole = document.getElementById('massRoleSelect').value;
+    if (!newRole) return;
+    
+    showConfirmModal(
+        'Alterar cargos em massa',
+        `Você está prestes a alterar o cargo de ${selected.length} usuário(s) para <strong>${newRole.toUpperCase()}</strong>. Deseja continuar?`,
+        async () => {
+            try {
+                for (const userId of selected) {
+                    await databaseManager.updateUser(userId, { role: newRole });
+                }
+                showToast(`Cargo alterado para ${selected.length} usuário(s)`, 'success');
+                await loadUsers();
+            } catch (e) {
+                showToast('Erro ao atualizar: ' + e.message, 'error');
+            }
+        }
+    );
 }
 
 // ========== USUÁRIOS ==========
@@ -121,7 +213,8 @@ function renderUsersTable(users) {
     const isAdmin = currentUserRole === 'admin';
     
     if (!users.length) {
-        tbody.innerHTML = `<tr><td colspan="${isAdmin ? 5 : 3}" style="text-align:center;padding:40px;">Nenhum usuário</td></tr>`;
+        const colspan = isAdmin ? 6 : 4; // admin: checkbox + user + email + role + status + actions
+        tbody.innerHTML = `<tr><td colspan="${colspan}" style="text-align:center;padding:40px;">Nenhum usuário</td></tr>`;
         return;
     }
     
@@ -142,8 +235,10 @@ function renderUsersTable(users) {
             actions = user.is_banned ? `<button class="btn-action success" onclick="toggleBanUser('${user.id}', false)">Desbanir</button>` : `<button class="btn-action danger" onclick="toggleBanUser('${user.id}', true)">Banir</button>`;
         }
         
+        // Linha da tabela: checkbox (admin), user, email (admin), role (admin), status, actions
         return `
             <tr>
+                ${isAdmin ? `<td style="text-align: center;"><input type="checkbox" class="user-select-checkbox" data-user-id="${user.id}"></td>` : ''}
                 <td>
                     <div class="user-cell">
                         <div class="user-avatar-small">
@@ -163,6 +258,12 @@ function renderUsersTable(users) {
             </tr>
         `;
     }).join('');
+    
+    // Após renderizar, garantir que o checkbox "selecionar todos" reflita o estado
+    if (isAdmin) {
+        const selectAll = document.getElementById('selectAllUsers');
+        if (selectAll) selectAll.checked = false;
+    }
 }
 
 function filterUsers(e) {
@@ -593,9 +694,18 @@ async function deleteAnnouncement(id) {
 
 // ========== UTILITÁRIOS GERAIS ==========
 async function handleLogout() {
-    await sessionManager.logout();
     if (statsInterval) clearInterval(statsInterval);
     if (reactionsPollInterval) clearInterval(reactionsPollInterval);
+    await sessionManager.logout();
     window.location.href = '/login/';
 }
-function goToChat() { window.location.href = '/chat/'; }
+function goToChat() { 
+    window.location.href = '/mensagem_geral/'; 
+}
+function getRoleColor(role) {
+    const colors = { 'admin': '#dc2626', 'moderator': '#7c3aed', 'user': '#a0a0a0' };
+    return colors[role] || colors.user;
+}
+function removeAdminOption() {
+    document.querySelectorAll('select.form-input option[value="admin"]').forEach(opt => opt.remove());
+}

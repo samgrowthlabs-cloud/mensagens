@@ -89,6 +89,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     
     initializeUI(user);
+    // Dentro do DOMContentLoaded, após validar o usuário:
+    if (window.matchMedia('(display-mode: standalone)').matches || navigator.standalone) {
+    // Está rodando como PWA instalado → pede permissão de notificação
+    setTimeout(async () => {
+        if (Notification.permission === 'default') {
+        await Notification.requestPermission();
+        }
+    }, 2000);
+    }
     startPollCheck();
     await updateMyStatus('online');
     await loadAllData(user.id);
@@ -828,26 +837,35 @@ async function getUnreadCounts() {
 
 // ========== NOTIFICAÇÕES PWA ==========
 async function showNotification(title, body, icon, data) {
-    if (!('Notification' in window)) return;
-    if (Notification.permission === 'default') {
-        const permission = await Notification.requestPermission();
-        if (permission !== 'granted') return;
-    }
-    if (Notification.permission === 'granted') {
-        if (navigator.serviceWorker && navigator.serviceWorker.controller) {
-            const registration = await navigator.serviceWorker.ready;
-            registration.showNotification(title, {
-                body: body,
-                icon: icon || '/assets/icons/icon-192.png',
-                badge: '/assets/icons/icon-192.png',
-                tag: 'bidjorchat-message',
-                renotify: true,
-                data: data || { url: '/chat/index.html' }
-            });
-        } else {
-            new Notification(title, { body: body, icon: icon || '/assets/icons/icon-192.png' });
-        }
-    }
+  if (!('Notification' in window)) return;
+  
+  // Solicitar permissão se ainda não foi
+  if (Notification.permission === 'default') {
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') return;
+  }
+  
+  if (Notification.permission !== 'granted') return;
+  
+  // Verifica se o Service Worker está registrado e ativo
+  const registration = await navigator.serviceWorker.getRegistration();
+  if (!registration) {
+    console.warn('Service Worker não registrado');
+    // Fallback: notificação normal
+    new Notification(title, { body, icon, data });
+    return;
+  }
+  
+  // Mostrar notificação via Service Worker (mais confiável em PWA)
+  registration.showNotification(title, {
+    body: body,
+    icon: icon || '/assets/icons/icon-192.png',
+    badge: '/assets/icons/icon-192.png',
+    tag: 'bidjorchat',
+    renotify: true,
+    data: data || { url: window.location.href },
+    vibrate: [200, 100, 200]
+  });
 }
 
 // ========== RESPOSTA (REPLY) ==========

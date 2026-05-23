@@ -1,4 +1,6 @@
 // Utilitários
+let activeRateLimitToast = null;
+let rateLimitTimerInterval = null;
 
 function escapeHtml(text) {
     if (!text) return '';
@@ -75,8 +77,58 @@ function getInitials(name) {
 }
 
 function isMessageEditable(createdAt) {
-    const created = new Date(createdAt);
+    const editWindow = 24 * 60 * 60 * 1000; // 24 horas
     const now = new Date();
-    const diff = now - created;
-    return diff < CONFIG.MESSAGE_EDIT_WINDOW;
+    const created = new Date(createdAt);
+    return (now - created) < editWindow;
+}
+
+
+function showRateLimitNotification(seconds) {
+    // Remove toast antigo se existir
+    if (activeRateLimitToast) {
+        clearInterval(rateLimitTimerInterval);
+        activeRateLimitToast.remove();
+        activeRateLimitToast = null;
+    }
+
+    const toast = document.createElement('div');
+    toast.className = 'rate-limit-toast';
+    toast.innerHTML = `
+        <div class="toast-icon">⏱️</div>
+        <div class="toast-content">
+            <div class="toast-title">Limite de mensagens excedido</div>
+            <div class="toast-message">Aguarde um momento antes de enviar novamente.</div>
+        </div>
+        <div class="toast-timer" id="rateLimitTimer">${seconds}s</div>
+    `;
+    document.body.appendChild(toast);
+    activeRateLimitToast = toast;
+
+    let remaining = seconds;
+    const timerEl = toast.querySelector('#rateLimitTimer');
+
+    rateLimitTimerInterval = setInterval(() => {
+        remaining--;
+        if (remaining <= 0) {
+            clearInterval(rateLimitTimerInterval);
+            if (activeRateLimitToast) {
+                activeRateLimitToast.classList.add('hide');
+                setTimeout(() => activeRateLimitToast?.remove(), 300);
+                activeRateLimitToast = null;
+            }
+        } else {
+            timerEl.textContent = `${remaining}s`;
+        }
+    }, 1000);
+
+    // Auto-fechar após o tempo (por segurança)
+    setTimeout(() => {
+        if (activeRateLimitToast) {
+            clearInterval(rateLimitTimerInterval);
+            activeRateLimitToast.classList.add('hide');
+            setTimeout(() => activeRateLimitToast?.remove(), 300);
+            activeRateLimitToast = null;
+        }
+    }, seconds * 1000);
 }

@@ -276,6 +276,93 @@ class DatabaseManager {
         if (error) throw error;
     }
 
+
+        // ============================================
+    // RATE LIMITING (SPAM CONTROL)
+    // ============================================
+
+    async getRateLimitSettings() {
+        const { data, error } = await db
+            .from('system_settings')
+            .select('key, value');
+        if (error) throw error;
+        const settings = {};
+        data.forEach(row => { settings[row.key] = row.value; });
+        return {
+            maxMessages: parseInt(settings.rate_limit_max_messages) || 10,
+            windowSeconds: parseInt(settings.rate_limit_window_seconds) || 60,
+            blockSeconds: parseInt(settings.rate_limit_block_seconds) || 30
+        };
+    }
+
+    async saveRateLimitSettings(maxMessages, windowSeconds, blockSeconds) {
+        const { error } = await db
+            .from('system_settings')
+            .upsert([
+                { key: 'rate_limit_max_messages', value: String(maxMessages) },
+                { key: 'rate_limit_window_seconds', value: String(windowSeconds) },
+                { key: 'rate_limit_block_seconds', value: String(blockSeconds) }
+            ], { onConflict: 'key' });
+        if (error) throw error;
+        return true;
+    }
+
+    async checkRateLimit(userId, chatType = 'private') {
+        const settings = await this.getRateLimitSettings();
+        const now = new Date();
+
+        // Verificar se o usuário está bloqueado ativamente
+        const { data: block } = await db
+            .from('rate_limit_blocks')
+            .select('blocked_until')
+            .eq('user_id', userId)
+            .maybeSingle();
+
+        if (block && new Date(block.blocked_until) > now) {
+            const waitSeconds = Math.ceil((new Date(block.blocked_until) - now) / 1000);
+            throw new Error(`🚫 Limite de mensagens excedido. Aguarde ${waitSeconds} segundos.`);
+        }
+
+        // Contar mensagens na janela atual
+        const windowStart = new Date(now.getTime() - settings.windowSeconds * 1000);
+        let countQuery;
+        if (chatType === 'private') {
+            countQuery = db
+                .from('messages')
+                .select('created_at', { count: 'exact', head: true })
+                .eq('sender_id', userId)
+                .gte('created_at', windowStart.toISOString());
+        } else {
+            countQuery = db
+                .from('geral_messages')
+                .select('created_at', { count: 'exact', head: true })
+                .eq('user_id', userId)
+                .gte('created_at', windowStart.toISOString());
+        }
+        const { count, error } = await countQuery;
+        if (error) throw error;
+
+        if (count >= settings.maxMessages) {
+            // Bloquear usuário por blockSeconds a partir de agora
+            const blockedUntil = new Date(now.getTime() + settings.blockSeconds * 1000);
+            await db
+                .from('rate_limit_blocks')
+                .upsert({ user_id: userId, blocked_until: blockedUntil.toISOString() }, { onConflict: 'user_id' });
+
+            throw new Error(`🚫 Limite de mensagens excedido. Aguarde ${settings.blockSeconds} segundos.`);
+        }
+
+        // Se não excedeu o limite e não há bloqueio, remover qualquer bloqueio antigo (caso exista)
+        if (block) {
+            await db.from('rate_limit_blocks').delete().eq('user_id', userId);
+        }
+
+        return true;
+    }
+
+
+    
+
     // ============================================
     // OPERAÇÕES DE SESSÃO
     // ============================================

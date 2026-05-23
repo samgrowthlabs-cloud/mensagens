@@ -905,3 +905,40 @@ body {
     font-weight: 600;
     color: #9ca3af;
 }
+
+/* Ações de editar/excluir nas mensagens */
+.geral-message-footer {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 6px;
+}
+.geral-message-actions {
+    display: flex;
+    gap: 6px;
+}
+.msg-action-btn {
+    background: rgba(255,255,255,0.05);
+    border: none;
+    border-radius: 12px;
+    padding: 2px 8px;
+    font-size: 11px;
+    cursor: pointer;
+    color: #9ca3af;
+    transition: all 0.15s;
+}
+.msg-action-btn:hover {
+    background: rgba(255,255,255,0.1);
+    color: #fff;
+}
+.edit-btn:hover {
+    color: #a78bfa;
+}
+.delete-btn:hover {
+    color: #ef4444;
+}
+.edited-mark {
+    font-size: 10px;
+    color: #6b6b6b;
+    margin-left: 6px;
+}

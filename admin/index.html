@@ -3,17 +3,17 @@
 <head>
   <meta charset="UTF-8">
   <!-- Favicon -->
-    <link rel="icon" type="image/png" sizes="32x32" href="/assets/icons/icon-32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="/assets/icons/icon-16.png">
-    <link rel="apple-touch-icon" href="/assets/icons/icon-192.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/icons/icon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/assets/icons/icon-16.png">
+  <link rel="apple-touch-icon" href="/assets/icons/icon-192.png">
   <!-- PWA -->
-    <link rel="manifest" href="/manifest.json">
-    <meta name="theme-color" content="#0a0a0a">
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="BIDJORCHAT">
-    <link rel="apple-touch-icon" href="/assets/icons/icon-192.png">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#0a0a0a">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="BIDJORCHAT">
+  <link rel="apple-touch-icon" href="/assets/icons/icon-192.png">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BIDJORCHAT - Admin Panel</title>
   
@@ -50,6 +50,82 @@
       align-items: center;
       gap: 12px;
     }
+    .mass-role-container {
+      margin-top: 16px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+      padding: 12px 0;
+    }
+    .btn-mass {
+      background: #2a2a2a;
+      border: 1px solid #3a3a3a;
+      border-radius: 8px;
+      padding: 8px 16px;
+      color: #e0e0e0;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-mass:hover {
+      background: #3a3a3a;
+      border-color: #5a5a5a;
+    }
+    .btn-mass.danger {
+      background: rgba(239,68,68,0.1);
+      border-color: #ef4444;
+      color: #ef4444;
+    }
+    .btn-mass.danger:hover {
+      background: rgba(239,68,68,0.2);
+    }
+    /* Checkbox na tabela */
+    .user-select-checkbox {
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+      accent-color: #8b5cf6;
+    }
+    /* Rate limit section */
+    .rate-limit-section .form-group {
+      margin-bottom: 20px;
+    }
+    .rate-limit-section .form-group label {
+      display: block;
+      font-size: 14px;
+      font-weight: 500;
+      color: #a0a0a0;
+      margin-bottom: 8px;
+    }
+    .rate-limit-section .form-group input {
+      width: 100%;
+      max-width: 300px;
+      background: #0f0f0f;
+      border: 1px solid #2a2a2a;
+      border-radius: 8px;
+      padding: 10px 14px;
+      color: #f0f0f0;
+    }
+    .rate-limit-section .form-group small {
+      display: block;
+      font-size: 12px;
+      color: #6b6b6b;
+      margin-top: 6px;
+    }
+    .btn-save {
+      background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+      border: none;
+      color: white;
+      padding: 10px 24px;
+      border-radius: 24px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-save:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(139,92,246,0.4);
+    }
   </style>
 </head>
 <body>
@@ -67,165 +143,193 @@
     </header>
     
     <main class="admin-content">
-    <!-- CARDS DE ESTATÍSTICAS -->
-    <section class="stats-section">
+      <!-- CARDS DE ESTATÍSTICAS -->
+      <section class="stats-section">
         <div class="stats-grid" id="statsGrid">
-        <div class="stat-card">
-          <div class="stat-icon">👥</div>
-          <div class="stat-value" id="statTotalUsers">-</div>
-          <div class="stat-label">Total de Usuários</div>
+          <div class="stat-card">
+            <div class="stat-icon">👥</div>
+            <div class="stat-value" id="statTotalUsers">-</div>
+            <div class="stat-label">Total de Usuários</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">🟢</div>
+            <div class="stat-value" id="statOnline">-</div>
+            <div class="stat-label">Online Agora</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">💬</div>
+            <div class="stat-value" id="statPrivateMessages">-</div>
+            <div class="stat-label">Mensagens Privadas</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">🌐</div>
+            <div class="stat-value" id="statGeralMessages">-</div>
+            <div class="stat-label">Mensagens Geral</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">📊</div>
+            <div class="stat-value" id="statTotalMessages">-</div>
+            <div class="stat-label">Total de Mensagens</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">🚫</div>
+            <div class="stat-value" id="statBanned">-</div>
+            <div class="stat-label">Usuários Banidos</div>
+          </div>
         </div>
-        <div class="stat-card">
-          <div class="stat-icon">🟢</div>
-          <div class="stat-value" id="statOnline">-</div>
-          <div class="stat-label">Online Agora</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-icon">💬</div>
-          <div class="stat-value" id="statPrivateMessages">-</div>
-          <div class="stat-label">Mensagens Privadas</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-icon">🌐</div>
-          <div class="stat-value" id="statGeralMessages">-</div>
-          <div class="stat-label">Mensagens Geral</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-icon">📊</div>
-          <div class="stat-value" id="statTotalMessages">-</div>
-          <div class="stat-label">Total de Mensagens</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-icon">🚫</div>
-          <div class="stat-value" id="statBanned">-</div>
-          <div class="stat-label">Usuários Banidos</div>
-        </div>
-      </div>
-    </section>
+      </section>
 
-    <!-- AÇÕES EM MASSA (apenas admin) -->
-    <section class="mass-actions-section" id="massActions" style="display:none;">
-      <div class="mass-actions">
-        <button class="btn-mass danger" onclick="deleteAllUsers()">
-          🗑️ Apagar todos os usuários (exceto admins)
-        </button>
-        <button class="btn-mass danger" onclick="deleteAllPrivateMessages()">
-          💬 Apagar mensagens privadas
-        </button>
-        <button class="btn-mass danger" onclick="deleteAllGeralMessages()">
-          🌐 Apagar mensagens gerais
-        </button>
-        <button class="btn-mass danger" onclick="deleteAllMessages()">
-          ⚠️ Apagar TODAS as mensagens
-        </button>
-      </div>
-    </section>
+      <!-- AÇÕES EM MASSA (apenas admin) -->
+      <section class="mass-actions-section" id="massActions" style="display:none;">
+        <div class="mass-actions">
+          <button class="btn-mass danger" onclick="deleteAllUsers()">🗑️ Apagar todos os usuários (exceto admins)</button>
+          <button class="btn-mass danger" onclick="deleteAllPrivateMessages()">💬 Apagar mensagens privadas</button>
+          <button class="btn-mass danger" onclick="deleteAllGeralMessages()">🌐 Apagar mensagens gerais</button>
+          <button class="btn-mass danger" onclick="deleteAllMessages()">⚠️ Apagar TODAS as mensagens</button>
+        </div>
+      </section>
 
-    <!-- USUÁRIOS -->
-    <section class="users-section">
+      <!-- USUÁRIOS -->
+      <section class="users-section">
         <div class="section-header">
-        <h2 class="section-title">👤 Usuários</h2>
-        <div class="admin-controls">
+          <h2 class="section-title">👤 Usuários</h2>
+          <div class="admin-controls">
             <div class="search-box">
-            <input type="text" id="userSearch" placeholder="Buscar usuários..." class="search-input">
+              <input type="text" id="userSearch" placeholder="Buscar usuários..." class="search-input">
             </div>
             <button class="btn-csv" onclick="exportCSV()">📥 Exportar CSV</button>
-        </div>
+          </div>
         </div>
         
         <div class="table-container table-scroll" style="max-height: 500px; overflow-y: auto;">
-        <table class="admin-table">
+          <table class="admin-table">
             <thead>
-            <tr>
+              <tr>
+                <th style="width: 40px;"><input type="checkbox" id="selectAllUsers" title="Selecionar todos"></th>
                 <th data-sort="username" class="sortable" style="cursor:pointer;">Usuário <span class="sort-arrow asc">▲</span></th>
                 <th data-sort="email" class="col-email sortable" style="cursor:pointer;">Email <span class="sort-arrow"></span></th>
                 <th data-sort="role" class="col-role sortable" style="cursor:pointer;">Cargo <span class="sort-arrow"></span></th>
                 <th data-sort="status" class="sortable" style="cursor:pointer;">Status <span class="sort-arrow"></span></th>
                 <th class="col-edit">Ações</th>
-            </tr>
+              </tr>
             </thead>
             <tbody id="usersTableBody">
-            <tr>
-                <td colspan="5">
-                <div class="skeleton" style="height:40px;margin:4px;"></div>
+              <tr>
+                <td colspan="6">
+                  <div class="skeleton" style="height:40px;margin:4px;"></div>
                 </td>
-            </tr>
+              </tr>
             </tbody>
-        </table>
+          </table>
         </div>
-    </section>
+        
+        <!-- Ações em massa (cargos) - apenas admin -->
+        <div id="massRoleContainer" class="mass-role-container" style="display: none;">
+          <select id="massRoleSelect" class="form-input" style="width: auto;">
+            <option value="user">USER</option>
+            <option value="moderator">MODERATOR</option>
+            <option value="admin">ADMIN</option>
+          </select>
+          <button id="applyMassRoleBtn" class="btn-mass">Aplicar cargo aos selecionados</button>
+        </div>
+      </section>
 
-    <!-- ENQUETES (antes dos logs) -->
-    <section class="polls-section" id="pollsSection" style="display:none;">
+      <!-- ENQUETES (apenas admin) -->
+      <section class="polls-section" id="pollsSection" style="display:none;">
         <div class="section-header">
-        <h2 class="section-title">📊 Enquetes</h2>
-        <button class="btn-add-user" onclick="showCreatePollModal()">+ Nova Enquete</button>
+          <h2 class="section-title">📊 Enquetes</h2>
+          <button class="btn-add-user" onclick="showCreatePollModal()">+ Nova Enquete</button>
         </div>
         <div class="table-container" style="max-height: 400px; overflow-y: auto;">
-        <table class="admin-table">
+          <table class="admin-table">
             <thead>
-            <tr>
+              <tr>
                 <th>Pergunta</th>
                 <th>Status</th>
                 <th>Criada em</th>
                 <th>Ações</th>
-            </tr>
+              </tr>
             </thead>
             <tbody id="pollsTableBody">
-            <tr>
+              <tr>
                 <td colspan="4" style="text-align:center;padding:20px;">Nenhuma enquete</td>
-            </tr>
+              </tr>
             </tbody>
-        </table>
+          </table>
         </div>
-    </section>
+      </section>
 
+      <!-- ANÚNCIOS (apenas admin) -->
+      <section class="announcements-section" id="announcementsSection" style="display:none;">
+        <div class="section-header">
+          <h2 class="section-title">📢 Anúncios</h2>
+          <button class="btn-add-user" onclick="showCreateAnnouncementModal()">+ Novo Anúncio</button>
+        </div>
+        <div class="table-container" style="max-height: 400px; overflow-y: auto;">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Título</th>
+                <th>Conteúdo</th>
+                <th>Reações</th>
+                <th>Criado em</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="announcementsTableBody">
+              <tr>
+                <td colspan="5" style="text-align:center;padding:20px;">Nenhum anúncio</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
 
-    <!-- ANÚNCIOS (apenas admin) -->
-  <section class="announcements-section" id="announcementsSection" style="display:none;">
-    <div class="section-header">
-      <h2 class="section-title">📢 Anúncios</h2>
-      <button class="btn-add-user" onclick="showCreateAnnouncementModal()">+ Novo Anúncio</button>
-    </div>
-    <div class="table-container" style="max-height: 400px; overflow-y: auto;">
-      <table class="admin-table">
-        <thead>
-          <tr>
-            <th>Título</th>
-            <th>Conteúdo</th>
-            <th>Criado em</th>
-            <th>Ações</th>
-          </tr>
-        </thead>
-        <tbody id="announcementsTableBody">
-          <tr><td colspan="4" style="text-align:center;padding:20px;">Nenhum anúncio</td></tr>
-        </tbody>
-      </table>
-    </div>
-  </section>
+      <!-- CONTROLE DE SPAM (RATE LIMIT) - Admin e Moderador -->
+      <section class="rate-limit-section" id="rateLimitSection" style="display:none;">
+        <div class="section-header">
+          <h2 class="section-title">⏱️ Controle de Spam</h2>
+        </div>
+        <div class="form-group">
+          <label>Máximo de mensagens por janela</label>
+          <input type="number" id="rateMaxMessages" class="form-input" value="10">
+          <small>Número de mensagens permitidas dentro da janela de tempo</small>
+        </div>
+        <div class="form-group">
+          <label>Janela de tempo (segundos)</label>
+          <input type="number" id="rateWindowSeconds" class="form-input" value="60">
+          <small>Período em que as mensagens são contadas</small>
+        </div>
+        <div class="form-group">
+          <label>Tempo de bloqueio após o limite (segundos)</label>
+          <input type="number" id="rateBlockSeconds" class="form-input" value="30">
+          <small>Tempo que o usuário fica impedido de enviar mensagens após exceder o limite</small>
+        </div>
+        <button class="btn-save" id="saveRateLimitBtn">Salvar Configurações</button>
+      </section>
 
-    <!-- LOGS DE ATIVIDADE -->
-    <section class="logs-section">
+      <!-- LOGS DE ATIVIDADE -->
+      <section class="logs-section">
         <h2 class="section-title">📋 Atividades Recentes</h2>
         <div class="table-container" style="max-height: 400px; overflow-y: auto;">
-        <table class="admin-table">
+          <table class="admin-table">
             <thead>
-            <tr>
+              <tr>
                 <th>Usuário</th>
                 <th>Ação</th>
                 <th>Data/Hora</th>
-            </tr>
+              </tr>
             </thead>
             <tbody id="logsTableBody">
-            <tr>
+              <tr>
                 <td colspan="3">
-                <div class="skeleton" style="height:40px;margin:4px;"></div>
+                  <div class="skeleton" style="height:40px;margin:4px;"></div>
                 </td>
-            </tr>
+              </tr>
             </tbody>
-        </table>
+          </table>
         </div>
-    </section>
+      </section>
     </main>
   </div>
   
@@ -309,6 +413,6 @@
         .catch((err) => console.log('❌ Service Worker falhou:', err));
     });
   }
-</script>
+  </script>
 </body>
 </html>

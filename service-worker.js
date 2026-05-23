@@ -1,4 +1,4 @@
-const CACHE_NAME = 'bidjorchat-v2';
+const CACHE_NAME = 'bidjorchat-v3';
 const ASSETS = [
   '/login/index.html',
   '/chat/index.html',
@@ -21,7 +21,6 @@ const ASSETS = [
   '/assets/icons/icon-512.png'
 ];
 
-// Instalação
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
@@ -29,7 +28,6 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
-// Ativação
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
@@ -41,7 +39,6 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// Estratégia: network first, fallback para cache
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   if (event.request.url.includes('supabase.co')) return;
@@ -60,19 +57,27 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// Evento de clique na notificação
+// ========== NOTIFICAÇÕES PUSH ==========
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const urlToOpen = event.notification.data?.url || '/chat/index.html';
+  
+  let url = '/mensagem_geral/index.html'; // padrão
+  
+  if (event.notification.data && event.notification.data.url) {
+    url = event.notification.data.url;
+  }
+  
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      // Verifica se já existe uma janela/aba aberta com a URL
       for (const client of clientList) {
-        if (client.url.includes(urlToOpen) && 'focus' in client) {
+        if (client.url === url && 'focus' in client) {
           return client.focus();
         }
       }
+      // Caso contrário, abre nova janela
       if (clients.openWindow) {
-        return clients.openWindow(urlToOpen);
+        return clients.openWindow(url);
       }
     })
   );
