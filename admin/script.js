@@ -22,7 +22,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     
     const user = sessionManager.getCurrentUser();
-    if (!user || (user.role !== 'admin' && user.role !== 'moderator')) {
+    if (!user || (user.role !== 'admin' && user.role !== 'moderator' && user.role !== 'supervisor')) {
         window.location.href = '/chat/';
         return;
     }
@@ -96,41 +96,73 @@ document.addEventListener('DOMContentLoaded', async () => {
 function setupUIByRole(user) {
     const badge = document.querySelector('.admin-badge');
     if (badge) {
-        badge.textContent = user.role === 'admin' ? 'ADMIN' : 'MODERADOR';
-        badge.style.background = user.role === 'admin' ? 'var(--accent-admin)' : 'var(--accent-moderator)';
+        const badges = {
+            'admin': 'ADMIN',
+            'moderator': 'MODERADOR',
+            'supervisor': 'SUPERVISOR'
+        };
+        const bgColors = {
+            'admin': 'var(--accent-admin)',
+            'moderator': 'var(--accent-moderator)',
+            'supervisor': '#f59e0b'
+        };
+        badge.textContent = badges[user.role] || user.role.toUpperCase();
+        badge.style.background = bgColors[user.role] || 'var(--accent-user)';
     }
-    
-    // Botão "Novo Usuário" apenas para admin
+
+    const isAdmin = user.role === 'admin';
+    const isSupervisor = user.role === 'supervisor';
+    const isModerator = user.role === 'moderator';
+    const isElevated = isAdmin || isSupervisor;
+
+    // Botão "Novo Usuário"
     const btnAdd = document.getElementById('btnAddUser') || document.querySelector('.btn-add-user');
-    if (btnAdd && user.role !== 'admin') btnAdd.style.display = 'none';
-    
-    // Moderador não vê colunas Email e Cargo na tabela de usuários
-    if (user.role === 'moderator') {
+    if (btnAdd && !isElevated) btnAdd.style.display = 'none';
+
+    // Supervisor NÃO vê email, mas vê cargo. Moderador não vê email nem cargo
+    if (isSupervisor) {
+        document.querySelectorAll('.col-email').forEach(el => el.classList.add('hidden'));
+    }
+    if (isModerator) {
         document.querySelectorAll('.col-email, .col-role').forEach(el => el.classList.add('hidden'));
     }
-    
-    // Ações em massa (apenas admin)
+
+    // Ações em massa – mostrar seção, mas filtrar botões por cargo
     const massActions = document.getElementById('massActions');
-    if (massActions && user.role === 'admin') massActions.style.display = 'flex';
-    
+    if (massActions) {
+        massActions.style.display = isElevated ? 'flex' : 'none';
+
+        // Supervisor: apenas o botão de apagar mensagens gerais
+        if (isSupervisor && !isAdmin) {
+            document.querySelectorAll('.btn-mass-users, .btn-mass-private, .btn-mass-all').forEach(btn => btn.style.display = 'none');
+            const btnGeral = document.querySelector('.btn-mass-geral');
+            if (btnGeral) btnGeral.style.display = '';
+        }
+        // Admin: todos os botões (já estão visíveis por padrão)
+        if (isAdmin) {
+            document.querySelectorAll('.btn-mass-users, .btn-mass-private, .btn-mass-geral, .btn-mass-all').forEach(btn => btn.style.display = '');
+        }
+    }
+
     // Container de seleção de cargo em massa (apenas admin)
     const massRoleContainer = document.getElementById('massRoleContainer');
-    if (massRoleContainer) {
-        massRoleContainer.style.display = user.role === 'admin' ? 'flex' : 'none';
-    }
-    
-    // Seções exclusivas de admin
-    if (user.role === 'admin') {
-        const pollsSec = document.getElementById('pollsSection');
-        if (pollsSec) pollsSec.style.display = 'block';
-        const announcementsSec = document.getElementById('announcementsSection');
-        if (announcementsSec) announcementsSec.style.display = 'block';
-    }
-    
-    // Rate Limit: aparece para admin e moderador
+    if (massRoleContainer) massRoleContainer.style.display = isAdmin ? 'flex' : 'none';
+
+    // Seções exclusivas de admin e supervisor (enquetes, anúncios)
+    const pollsSec = document.getElementById('pollsSection');
+    if (pollsSec) pollsSec.style.display = isElevated ? 'block' : 'none';
+    const announcementsSec = document.getElementById('announcementsSection');
+    if (announcementsSec) announcementsSec.style.display = isElevated ? 'block' : 'none';
+
+    // Rate Limit (admin, supervisor e moderador)
     const rateLimitSection = document.getElementById('rateLimitSection');
-    if (rateLimitSection) {
-        rateLimitSection.style.display = (user.role === 'admin' || user.role === 'moderator') ? 'block' : 'none';
+    if (rateLimitSection) rateLimitSection.style.display = (isElevated || isModerator) ? 'block' : 'none';
+
+    // Checkbox de seleção em massa (apenas admin)
+    const selectAll = document.getElementById('selectAllUsers');
+    if (selectAll) {
+        const thCheckbox = selectAll.closest('th');
+        if (thCheckbox) thCheckbox.style.display = isAdmin ? '' : 'none';
     }
 }
 
@@ -211,31 +243,52 @@ async function loadUsers() {
 function renderUsersTable(users) {
     const tbody = document.getElementById('usersTableBody');
     const isAdmin = currentUserRole === 'admin';
-    
+    const isSupervisor = currentUserRole === 'supervisor';
+    const isElevated = isAdmin || isSupervisor;
+    const isModerator = currentUserRole === 'moderator';
+
+    let colCount = 3; // Moderador: user + status + actions
+    if (isSupervisor) colCount = 4; // + cargo
+    if (isAdmin) colCount = 6;      // + checkbox + email + cargo
+
     if (!users.length) {
-        const colspan = isAdmin ? 6 : 4; // admin: checkbox + user + email + role + status + actions
-        tbody.innerHTML = `<tr><td colspan="${colspan}" style="text-align:center;padding:40px;">Nenhum usuário</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="${colCount}" style="text-align:center;padding:40px;">Nenhum usuário</td></tr>`;
         return;
     }
-    
+
     tbody.innerHTML = users.map(user => {
         const isSelf = user.id === currentUserId;
-        const canBan = (currentUserRole === 'admin' && user.role !== 'admin') ||
-                       (currentUserRole === 'moderator' && user.role === 'user');
-        
+
+        // Regras de banimento
+        const canBan = (isAdmin && user.role !== 'admin') ||
+                       (isSupervisor && user.role !== 'admin' && user.role !== 'supervisor') ||
+                       (isModerator && user.role === 'user');
+
         let actions = '';
+
         if (isAdmin) {
+            // Admin: vê tudo, exceto excluir a si mesmo e outros admins
             actions = `
                 <button class="btn-action" onclick="showEditUserModal('${user.id}')">Editar</button>
-                ${canBan ? (user.is_banned ? `<button class="btn-action success" onclick="toggleBanUser('${user.id}', false)">Desbanir</button>` : `<button class="btn-action danger" onclick="toggleBanUser('${user.id}', true)">Banir</button>`) : ''}
+                ${canBan ? (user.is_banned ? 
+                    `<button class="btn-action success" onclick="toggleBanUser('${user.id}', false)">Desbanir</button>` : 
+                    `<button class="btn-action danger" onclick="toggleBanUser('${user.id}', true)">Banir</button>`) : ''}
                 <button class="btn-action warning" onclick="resetUserPassword('${user.id}')">Resetar</button>
-                ${!isSelf && user.role !== 'admin' ? `<button class="btn-action" onclick="deleteUserConfirm('${user.id}')" style="background:rgba(239,68,68,0.1);color:#ef4444;border-color:#ef4444;">Excluir</button>` : ''}
+                ${!isSelf && user.role !== 'admin' ? 
+                    `<button class="btn-action" onclick="deleteUserConfirm('${user.id}')" style="background:rgba(239,68,68,0.1);color:#ef4444;border-color:#ef4444;">Excluir</button>` : ''}
             `;
-        } else if (currentUserRole === 'moderator' && canBan) {
-            actions = user.is_banned ? `<button class="btn-action success" onclick="toggleBanUser('${user.id}', false)">Desbanir</button>` : `<button class="btn-action danger" onclick="toggleBanUser('${user.id}', true)">Banir</button>`;
-        }
-        
-        // Linha da tabela: checkbox (admin), user, email (admin), role (admin), status, actions
+                } else if (isSupervisor) {
+                    // Supervisor: apenas Banir/Desbanir (users e moderators)
+                    actions = canBan ? (user.is_banned ? 
+                        `<button class="btn-action success" onclick="toggleBanUser('${user.id}', false)">Desbanir</button>` : 
+                        `<button class="btn-action danger" onclick="toggleBanUser('${user.id}', true)">Banir</button>`) : '';
+                } else if (isModerator && canBan) {
+                    // Moderador: apenas Banir/Desbanir
+                    actions = user.is_banned ? 
+                        `<button class="btn-action success" onclick="toggleBanUser('${user.id}', false)">Desbanir</button>` : 
+                        `<button class="btn-action danger" onclick="toggleBanUser('${user.id}', true)">Banir</button>`;
+                }
+
         return `
             <tr>
                 ${isAdmin ? `<td style="text-align: center;"><input type="checkbox" class="user-select-checkbox" data-user-id="${user.id}"></td>` : ''}
@@ -244,26 +297,20 @@ function renderUsersTable(users) {
                         <div class="user-avatar-small">
                             ${user.avatar_url ? `<img src="${escapeHtml(user.avatar_url)}" alt="${escapeHtml(user.username)}">` : `<span>${getInitials(user.username)}</span>`}
                         </div>
-                        <span style="color: ${getRoleColor(user.role)}; ${(currentUserRole !== 'moderator' || user.role !== 'admin') ? 'cursor: pointer;' : ''}" 
-                            ${(currentUserRole !== 'moderator' || user.role !== 'admin') ? `onclick="showUserProfile('${user.id}')"` : ''} 
-                            title="${(currentUserRole !== 'moderator' || user.role !== 'admin') ? 'Ver perfil de ' + escapeHtml(user.username) : 'Acesso restrito'}">
+                        <span style="color: ${getRoleColor(user.role)}; ${(isModerator && user.role === 'admin') ? '' : 'cursor: pointer;'}" 
+                            ${(isModerator && user.role === 'admin') ? '' : `onclick="showUserProfile('${user.id}')"`} 
+                            title="${(isModerator && user.role === 'admin') ? 'Acesso restrito' : 'Ver perfil de ' + escapeHtml(user.username)}">
                             ${escapeHtml(user.username)}
                         </span>
                     </div>
                 </td>
                 ${isAdmin ? `<td class="col-email">${escapeHtml(user.email || '-')}</td>` : ''}
-                ${isAdmin ? `<td class="col-role"><span class="role-badge-admin role-${user.role.toUpperCase()}">${user.role.toUpperCase()}</span></td>` : ''}
+                ${isElevated ? `<td class="col-role"><span class="role-badge-admin role-${user.role.toUpperCase()}">${user.role.toUpperCase()}</span></td>` : ''}
                 <td><span class="status-badge ${user.is_banned ? 'banned' : user.status}">${user.is_banned ? 'Banido' : user.status}</span></td>
                 <td class="col-edit"><div class="action-buttons">${actions}</div></td>
             </tr>
         `;
     }).join('');
-    
-    // Após renderizar, garantir que o checkbox "selecionar todos" reflita o estado
-    if (isAdmin) {
-        const selectAll = document.getElementById('selectAllUsers');
-        if (selectAll) selectAll.checked = false;
-    }
 }
 
 function filterUsers(e) {
@@ -366,6 +413,7 @@ async function toggleBanUser(userId, ban) {
     const target = allUsers.find(u => u.id === userId);
     if (!target) return;
     if (currentUserRole === 'moderator' && target.role !== 'user') { showToast('Você só pode banir/desbanir usuários comuns', 'error'); return; }
+    if (currentUserRole === 'supervisor' && (target.role === 'admin' || target.role === 'supervisor')) {showToast('Você não pode banir administradores ou supervisores', 'error');return;}
     if (currentUserRole === 'admin' && target.role === 'admin') { showToast('Não é possível banir um administrador', 'error'); return; }
     const action = ban ? 'banir' : 'desbanir';
     showConfirmModal(ban ? '🚫 Confirmar Banimento' : '✅ Confirmar Desbanimento', `Tem certeza que deseja <strong>${action}</strong> o usuário <strong style="color:${getRoleColor(target.role)}">${escapeHtml(target.username)}</strong>?`, async () => {
@@ -703,7 +751,12 @@ function goToChat() {
     window.location.href = '/mensagem_geral/'; 
 }
 function getRoleColor(role) {
-    const colors = { 'admin': '#dc2626', 'moderator': '#7c3aed', 'user': '#a0a0a0' };
+    const colors = {
+        'admin': '#dc2626',
+        'moderator': '#7c3aed',
+        'supervisor': '#f59e0b',  // amarelo/dourado
+        'user': '#a0a0a0'
+    };
     return colors[role] || colors.user;
 }
 function removeAdminOption() {

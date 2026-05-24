@@ -254,6 +254,7 @@
 
 .role-ADMIN { background: rgba(220, 38, 38, 0.2); color: var(--accent-admin); }
 .role-MODERATOR { background: rgba(124, 58, 237, 0.2); color: var(--accent-moderator); }
+.role-SUPERVISOR { background: rgba(245, 158, 11, 0.2); color: #f59e0b; }
 .role-USER { background: rgba(82, 82, 91, 0.2); color: var(--accent-user); }
 
 .status-badge {
@@ -763,3 +764,5 @@ section {
         max-width: 100%;
     }
 }
+
+.col-checkbox.hidden { display: none; }

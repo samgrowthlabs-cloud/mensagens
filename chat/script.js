@@ -165,12 +165,15 @@ function initializeUI(user) {
         }
     }
     const usernameEl = document.getElementById('currentUsername');
-    if (usernameEl) usernameEl.textContent = user.username;
+    if (usernameEl) {
+        usernameEl.textContent = user.username;
+        usernameEl.style.color = getRoleColor(user.role);
+    }
     const roleEl = document.getElementById('currentUserRole');
     if (roleEl) {
         const roleColor = getRoleColor(user.role);
         roleEl.style.color = roleColor;
-        roleEl.textContent = user.role === 'admin' ? 'ADMIN' : user.role === 'moderator' ? 'MODERADOR' : 'USUÁRIO';
+        roleEl.textContent = user.role === 'admin' ? 'ADMIN' : user.role === 'moderator' ? 'MODERADOR' : user.role === 'supervisor' ? 'SUPERVISOR' : 'USUÁRIO';
     }
     const statusMsgEl = document.getElementById('currentStatusMessage');
     if (statusMsgEl) {
@@ -178,13 +181,18 @@ function initializeUI(user) {
         statusMsgEl.style.display = user.status_message ? 'block' : 'none';
     }
     const btnAdmin = document.getElementById('btnAdminPanel');
-    if (btnAdmin && (user.role === 'admin' || user.role === 'moderator')) {
+    if (btnAdmin && (user.role === 'admin' || user.role === 'moderator' || user.role === 'supervisor')) {
         btnAdmin.style.display = 'block';
     }
 }
 
 function getRoleColor(role) {
-    const colors = { 'admin': '#dc2626', 'moderator': '#7c3aed', 'user': '#a0a0a0' };
+    const colors = { 
+        'admin': '#dc2626', 
+        'moderator': '#7c3aed', 
+        'supervisor': '#f59e0b',  // laranja/dourado
+        'user': '#a0a0a0' 
+    };
     return colors[role] || colors.user;
 }
 
@@ -612,7 +620,7 @@ function updateUserInfoBar(user) {
         }
     </div>
     <div class="info-text">
-        <div class="info-name">${escapeHtml(user.username)}</div>
+        <div class="info-name" style="color:${rc}">${escapeHtml(user.username)}</div>
         <div class="info-details">
             <span class="${user.status === 'online' ? 'online-dot' : 'online-dot offline-dot'}"></span>
             ${user.status === 'online' ? 'Online' : 'Offline'}

@@ -182,10 +182,10 @@
       <!-- AÇÕES EM MASSA (apenas admin) -->
       <section class="mass-actions-section" id="massActions" style="display:none;">
         <div class="mass-actions">
-          <button class="btn-mass danger" onclick="deleteAllUsers()">🗑️ Apagar todos os usuários (exceto admins)</button>
-          <button class="btn-mass danger" onclick="deleteAllPrivateMessages()">💬 Apagar mensagens privadas</button>
-          <button class="btn-mass danger" onclick="deleteAllGeralMessages()">🌐 Apagar mensagens gerais</button>
-          <button class="btn-mass danger" onclick="deleteAllMessages()">⚠️ Apagar TODAS as mensagens</button>
+          <button class="btn-mass danger btn-mass-users" onclick="deleteAllUsers()">🗑️ Apagar todos os usuários (exceto admins)</button>
+          <button class="btn-mass danger btn-mass-private" onclick="deleteAllPrivateMessages()">💬 Apagar mensagens privadas</button>
+          <button class="btn-mass danger btn-mass-geral" onclick="deleteAllGeralMessages()">🌐 Apagar mensagens gerais</button>
+          <button class="btn-mass danger btn-mass-all" onclick="deleteAllMessages()">⚠️ Apagar TODAS as mensagens</button>
         </div>
       </section>
 
@@ -205,7 +205,7 @@
           <table class="admin-table">
             <thead>
               <tr>
-                <th style="width: 40px;"><input type="checkbox" id="selectAllUsers" title="Selecionar todos"></th>
+                <th class="col-checkbox" style="width: 40px;"><input type="checkbox" id="selectAllUsers" title="Selecionar todos"></th>
                 <th data-sort="username" class="sortable" style="cursor:pointer;">Usuário <span class="sort-arrow asc">▲</span></th>
                 <th data-sort="email" class="col-email sortable" style="cursor:pointer;">Email <span class="sort-arrow"></span></th>
                 <th data-sort="role" class="col-role sortable" style="cursor:pointer;">Cargo <span class="sort-arrow"></span></th>
@@ -355,6 +355,7 @@
           <select id="newRole" class="form-input">
             <option value="user">USER</option>
             <option value="moderator">MODERATOR</option>
+            <option value="supervisor">SUPERVISOR</option>
             <option value="admin">ADMIN</option>
           </select>
         </div>
@@ -384,6 +385,7 @@
           <select id="editRole" class="form-input">
             <option value="user">USER</option>
             <option value="moderator">MODERATOR</option>
+            <option value="supervisor">SUPERVISOR</option>
             <option value="admin">ADMIN</option>
           </select>
         </div>
@@ -413,6 +415,17 @@
         .catch((err) => console.log('❌ Service Worker falhou:', err));
     });
   }
+  </script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      caches.keys().then(keys => {
+        keys.forEach(key => caches.delete(key));
+      });
+      navigator.serviceWorker.getRegistrations().then(registrations => {
+        registrations.forEach(reg => reg.unregister());
+      });
+      console.log('Cache limpo e Service Worker desregistrado. Recarregue a página.');
+    }
   </script>
 </body>
 </html>

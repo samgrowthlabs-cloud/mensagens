@@ -35,7 +35,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     
     // Mostrar botão admin
-    if (currentUser.role === 'admin' || currentUser.role === 'moderator') {
+    if (currentUser.role === 'admin' || currentUser.role === 'moderator' || currentUser.role == "supervisor") {
         document.getElementById('btnAdminPanel').style.display = '';
     }
     
@@ -115,9 +115,43 @@ function renderMessage(msg, prepend = false) {
     const container = document.getElementById('geralMessages');
     const user = allUsers[msg.user_id] || { username: 'Desconhecido', role: 'user', avatar_url: null };
     const isOwn = msg.user_id === currentUser.id;
-    const isModOrAdmin = currentUser.role === 'moderator' || currentUser.role === 'admin';
-    const canEdit = (isOwn && isMessageEditable(msg.created_at)) || (currentUser.role === 'admin' || currentUser.role === 'moderator');
-    const canDelete = isOwn || (currentUser.role === 'admin' || currentUser.role === 'moderator');
+    const isCurrentAdmin = currentUser.role === 'admin';
+    const isCurrentModerator = currentUser.role === 'moderator';
+    const isCurrentSupervisor = currentUser.role === 'supervisor';
+    const isAuthorAdmin = user.role === 'admin';
+    const isAuthorModerator = user.role === 'moderator';
+    
+    
+    // Determinar permissões de edição/exclusão
+    let canEdit = false;
+    let canDelete = false;
+
+
+    if (isCurrentAdmin) {
+    // Admin pode editar/excluir qualquer mensagem (exceto já editada, se for o caso)
+    canEdit = !msg.deleted && (!msg.edited || isMessageEditable(msg.created_at));
+    canDelete = !msg.deleted;
+    } else if (isCurrentSupervisor) {
+        // Supervisor pode editar/excluir mensagens de usuários comuns e as próprias
+        // Não pode editar/excluir mensagens de admins ou moderadores
+        if (user.role === 'user' || isOwn) {
+            canEdit = !msg.deleted && (!msg.edited || isMessageEditable(msg.created_at));
+            canDelete = !msg.deleted;
+        }
+    } else if (isCurrentModerator) {
+        // Moderador pode editar/excluir mensagens de usuários comuns e as próprias
+        // Não pode editar/excluir mensagens de admins
+        if (user.role === 'user' || isOwn) {
+            canEdit = !msg.deleted && (!msg.edited || isMessageEditable(msg.created_at));
+            canDelete = !msg.deleted;
+        }
+    } else {
+        // Usuário comum: só as próprias mensagens
+        if (isOwn) {
+            canEdit = !msg.deleted && (!msg.edited || isMessageEditable(msg.created_at));
+            canDelete = !msg.deleted;
+        }
+    }
     
     const roleColor = getRoleColor(user.role);
     
@@ -155,11 +189,11 @@ function renderMessage(msg, prepend = false) {
         `;
     }
     
-    // Botões de ação (editar/excluir)
+    // Botões de ação (editar/excluir) – apenas se tiver permissão
     let actionsHTML = '';
     if (canEdit || canDelete) {
         actionsHTML = `<div class="geral-message-actions">`;
-        if (canEdit && !msg.edited && isMessageEditable(msg.created_at)) {
+        if (canEdit) {
             actionsHTML += `<button class="msg-action-btn edit-btn" onclick="event.stopPropagation(); showEditGeralModal('${msg.id}', '${escapeHtml(msg.content).replace(/'/g, "\\'")}')">Editar</button>`;
         }
         if (canDelete) {
@@ -199,6 +233,47 @@ function renderMessage(msg, prepend = false) {
 }
 
 function showEditGeralModal(messageId, currentContent) {
+    db.from('geral_messages')
+        .select('user_id')
+        .eq('id', messageId)
+        .single()
+        .then(({ data: msg, error }) => {
+            if (error || !msg) {
+                showToast('Mensagem não encontrada', 'error');
+                return;
+            }
+            
+            const author = allUsers[msg.user_id];
+            if (!author) {
+                showToast('Autor da mensagem não encontrado', 'error');
+                return;
+            }
+            
+            const isAuthorAdmin = author.role === 'admin';
+            const isAuthorModerator = author.role === 'moderator';
+            const isCurrentSupervisor = currentUser.role === 'supervisor';
+            const isCurrentModerator = currentUser.role === 'moderator';
+            
+            // Supervisor não pode editar mensagens de admin ou moderador
+            if (isCurrentSupervisor && (isAuthorAdmin || isAuthorModerator)) {
+                showToast('Supervisores não podem editar mensagens de administradores ou moderadores', 'warning');
+                return;
+            }
+
+            // Moderador não pode editar mensagem de admin
+            if (isCurrentModerator && isAuthorAdmin) {
+                showToast('Moderadores não podem editar mensagens de administradores', 'warning');
+                return;
+            }
+            
+            openEditModal(messageId, currentContent);
+        })
+        .catch(e => {
+            showToast('Erro ao verificar permissão', 'error');
+        });
+}
+
+function openEditModal(messageId, currentContent) {
     const modal = document.createElement('div');
     modal.className = 'modal-overlay';
     modal.innerHTML = `
@@ -225,14 +300,9 @@ function showEditGeralModal(messageId, currentContent) {
             return;
         }
         try {
-            const { error } = await db
-                .from('geral_messages')
+            await db.from('geral_messages')
                 .update({ content: newContent, edited: true, edited_at: new Date().toISOString() })
-                .eq('id', messageId)
-                .eq('user_id', currentUser.id);
-            
-            if (error) throw error;
-            
+                .eq('id', messageId);
             showToast('Mensagem editada!', 'success');
             modal.remove();
             await loadGeralMessages();
@@ -243,7 +313,12 @@ function showEditGeralModal(messageId, currentContent) {
 }
 
 function getRoleColor(role) {
-    const colors = { admin: '#ef4444', moderator: '#8b5cf6', user: '#9ca3af' };
+    const colors = {
+        'admin': '#ef4444',
+        'moderator': '#8b5cf6',
+        'supervisor': '#f59e0b',   // laranja
+        'user': '#9ca3af'
+    };
     return colors[role] || '#9ca3af';
 }
 
@@ -421,6 +496,8 @@ function showUserProfile(userId) {
     // Regras de bloqueio de clique
     if (currentUser.role === 'moderator' && user.role === 'admin') return;
     if (currentUser.role === 'moderator' && user.role === 'moderator' && userId !== currentUser.id) return;
+    if (currentUser.role === 'supervisor' && user.role === 'admin') return;
+    if (currentUser.role === 'supervisor' && user.role === 'supervisor' && userId !== currentUser.id) return;
 
     const modal = document.getElementById('userProfileModal');
     const roleColor = getRoleColor(user.role);
@@ -439,8 +516,16 @@ function showUserProfile(userId) {
             </button>`;
     }
 
-    // Banir/Desbanir (apenas para usuários comuns)
-    if ((currentUser.role === 'moderator' || currentUser.role === 'admin') && user.role === 'user') {
+    // Banir/Desbanir
+    // Admin: pode banir users e moderators (nunca admins)
+    // Supervisor: pode banir users e moderators (nunca admins ou supervisores)
+    // Moderador: pode banir apenas users
+    const podeBanir = 
+        (currentUser.role === 'admin' && user.role !== 'admin') ||
+        (currentUser.role === 'supervisor' && user.role !== 'admin' && user.role !== 'supervisor') ||
+        (currentUser.role === 'moderator' && user.role === 'user');
+
+    if (podeBanir) {
         if (user.is_banned) {
             actionsHTML += `
                 <button class="btn-profile btn-success" id="profileBanBtn" data-user-id="${userId}" data-ban="false">
@@ -541,38 +626,53 @@ function closeProfileModal() {
 }
 
 async function confirmDeleteGeralMessage(messageId) {
+    const { data: msg, error } = await db
+        .from('geral_messages')
+        .select('user_id')
+        .eq('id', messageId)
+        .single();
+    
+    if (error || !msg) {
+        showToast('Mensagem não encontrada', 'error');
+        return;
+    }
+    
+    const author = allUsers[msg.user_id];
+    if (!author) {
+        showToast('Autor da mensagem não encontrado', 'error');
+        return;
+    }
+    
+    const isAuthorAdmin = author.role === 'admin';
+    const isAuthorModerator = author.role === 'moderator';
+    const isCurrentSupervisor = currentUser.role === 'supervisor';
+    const isCurrentModerator = currentUser.role === 'moderator';
+
+    // Supervisor não pode excluir mensagens de admin ou moderador
+    if (isCurrentSupervisor && (isAuthorAdmin || isAuthorModerator)) {
+        showToast('Supervisores não podem excluir mensagens de administradores ou moderadores', 'warning');
+        return;
+    }
+    
+    // Moderador não pode excluir mensagem de admin
+    if (isCurrentModerator && isAuthorAdmin) {
+        showToast('Moderadores não podem excluir mensagens de administradores', 'warning');
+        return;
+    }
+    
     if (!confirm('Excluir esta mensagem permanentemente?')) return;
+    
     try {
-        // Buscar a mensagem primeiro para verificar permissão (se não for admin/moderador, só pode excluir a sua)
-        const { data: msg, error: fetchError } = await db
-            .from('geral_messages')
-            .select('user_id')
-            .eq('id', messageId)
-            .single();
-        
-        if (fetchError) throw new Error('Mensagem não encontrada');
-        
-        const isAuthor = msg.user_id === currentUser.id;
-        const isModOrAdmin = currentUser.role === 'moderator' || currentUser.role === 'admin';
-        
-        if (!isAuthor && !isModOrAdmin) {
-            showToast('Você não tem permissão para excluir esta mensagem', 'error');
-            return;
-        }
-        
-        const { error } = await db
-            .from('geral_messages')
+        await db.from('geral_messages')
             .update({ deleted: true, deleted_at: new Date().toISOString() })
             .eq('id', messageId);
-        
-        if (error) throw error;
-        
         showToast('Mensagem excluída', 'success');
-        await loadGeralMessages(); // recarregar todas
+        await loadGeralMessages();
     } catch (e) {
         showToast('Erro ao excluir: ' + e.message, 'error');
     }
 }
+
 // ========== AÇÕES DE MODERAÇÃO ==========
 async function toggleBan(userId, ban) {
     try {
