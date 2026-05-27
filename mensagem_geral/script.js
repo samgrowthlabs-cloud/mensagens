@@ -55,7 +55,7 @@ const commandList = [
     { cmd: '/dado', desc: 'Rola um dado (padrão 6 lados)' },
     { cmd: '/caracoroa', desc: 'Cara ou coroa' },
     { cmd: '/simounao', desc: 'Resposta mágica (Sim/Não)' },
-    { cmd: '/choose', desc: 'Escolhe aleatoriamente uma opção' },
+    { cmd: '/escolha', desc: 'Escolhe aleatoriamente uma opção' },
     { cmd: '/tweet', desc: 'Publica um tweet estilizado' },
     { cmd: '/give', desc: 'Dá um presente simbólico' },
     { cmd: '/sondagem', desc: 'Cria enquete com várias opções' },
@@ -65,7 +65,13 @@ const commandList = [
     { cmd: '/ranking', desc: 'Exibe ranking semanal (modal)' },
     { cmd: '/rankingsend', desc: 'Envia ranking no chat (admin/supervisor)' },
     { cmd: '/clear_sys', desc: 'Apaga mensagens do robô (admin/supervisor)' },
-    { cmd: '/clear', desc: 'Apaga TODO o chat (admin/supervisor)' }
+    { cmd: '/clear', desc: 'Apaga TODO o chat (admin/supervisor)' },
+    { cmd: '/addgif', desc: 'Cadastra novo meme (admin/supervisor/moderador)' },
+    // 🆕 NOVOS COMANDOS
+    { cmd: '/crypto', desc: 'Cotação de criptomoeda (ex: /crypto btc)' },
+    { cmd: '/dolar', desc: 'Cotação do dólar comercial' },
+    { cmd: '/quote', desc: 'Frase motivacional aleatória' },
+    { cmd: '/rps', desc: 'Jogue pedra, papel ou tesoura (ex: /rps pedra)' }
 ];
 
 let activeSuggestions = false;
@@ -594,12 +600,12 @@ async function checkNewMessages() {
 // ========== ENVIO ==========
 function setupEventListeners() {
     const input = document.getElementById('geralMessageInput');
+    
+    // Auto-resize e autocomplete
     input.addEventListener('input', (e) => {
-        // Auto-resize
         input.style.height = 'auto';
         input.style.height = Math.min(input.scrollHeight, 120) + 'px';
         
-        // Autocomplete de comandos
         const text = input.value;
         if (text.startsWith('/')) {
             const parts = text.split(/\s+/);
@@ -610,26 +616,48 @@ function setupEventListeners() {
             hideCommandSuggestions();
         }
     });
+    
     // Fechar sugestões ao perder foco
     input.addEventListener('blur', () => {
         setTimeout(() => hideCommandSuggestions(), 200);
     });
-    // Teclas de navegação (opcional)
+    
+    // Envio com Enter (sem sugestões ativas)
     input.addEventListener('keydown', (e) => {
         const suggestionsDiv = document.getElementById('cmdSuggestions');
-        if (!suggestionsDiv || suggestionsDiv.style.display !== 'block') return;
-        const items = suggestionsDiv.querySelectorAll('.cmd-suggestion-item');
-        if (items.length === 0) return;
-        if (e.key === 'ArrowDown') {
+        const isSuggestionVisible = suggestionsDiv && suggestionsDiv.style.display === 'block';
+        
+        if (e.key === 'Enter') {
+            if (e.shiftKey) {
+                // Shift+Enter: permite quebra de linha (padrão)
+                return;
+            }
+            
+            // Se há sugestões visíveis e uma sugestão está selecionada, navegamos (já tratado no outro listener)
+            // Para evitar conflito, se uma sugestão está selecionada, deixamos o outro listener lidar.
+            if (isSuggestionVisible && selectedSuggestionIndex >= 0) {
+                // Não fazer nada aqui, pois o outro listener vai usar Enter para selecionar
+                return;
+            }
+            
+            // Caso contrário, envia a mensagem
             e.preventDefault();
-            selectedSuggestionIndex = (selectedSuggestionIndex + 1) % items.length;
-            updateSelectedSuggestion(items, input);
-        } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            selectedSuggestionIndex = (selectedSuggestionIndex - 1 + items.length) % items.length;
-            updateSelectedSuggestion(items, input);
-        } else if (e.key === 'Enter') {
-            if (selectedSuggestionIndex >= 0) {
+            sendGeralMessage();
+        }
+        
+        // Navegação nas sugestões com setas (apenas se sugestões visíveis)
+        if (isSuggestionVisible) {
+            const items = suggestionsDiv.querySelectorAll('.cmd-suggestion-item');
+            if (items.length === 0) return;
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                selectedSuggestionIndex = (selectedSuggestionIndex + 1) % items.length;
+                updateSelectedSuggestion(items, input);
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                selectedSuggestionIndex = (selectedSuggestionIndex - 1 + items.length) % items.length;
+                updateSelectedSuggestion(items, input);
+            } else if (e.key === 'Enter' && selectedSuggestionIndex >= 0) {
                 e.preventDefault();
                 const selectedItem = items[selectedSuggestionIndex];
                 const cmdText = selectedItem.querySelector('.cmd-name').textContent;
@@ -641,6 +669,8 @@ function setupEventListeners() {
     });
 }
 
+
+
 function updateSelectedSuggestion(items, input) {
     items.forEach((item, idx) => {
         if (idx === selectedSuggestionIndex) {
@@ -649,7 +679,6 @@ function updateSelectedSuggestion(items, input) {
             item.classList.remove('selected');
         }
     });
-    // Rolar para o item selecionado
     const selectedItem = items[selectedSuggestionIndex];
     if (selectedItem) selectedItem.scrollIntoView({ block: 'nearest' });
 }
@@ -2192,6 +2221,48 @@ async function processGeneralCommands(content) {
         return true;
     }
 
+    // /addgif nome url - Adicionar novo meme (apenas admin/supervisor/moderador)
+    if (cmd === '/addgif') {
+        if (!['admin', 'supervisor', 'moderator'].includes(currentUser.role)) {
+            sendSystemMessage(`❌ Apenas administradores, supervisores e moderadores podem adicionar GIFs.`);
+            return true;
+        }
+        if (args.length < 2) {
+            sendSystemMessage(`❌ Use: /addgif nome URL (ex: /addgif meme01 https://exemplo.com/meme.gif)`);
+            return true;
+        }
+        const commandName = args[0].toLowerCase();
+        const url = args[1];
+        // Validação básica da URL
+        if (!url.match(/^https?:\/\/.+/)) {
+            sendSystemMessage(`❌ URL inválida. Use uma URL completa (http:// ou https://).`);
+            return true;
+        }
+        try {
+            // Verificar se o comando já existe
+            const { data: existing } = await db
+                .from('meme_commands')
+                .select('command')
+                .eq('command', commandName)
+                .maybeSingle();
+            if (existing) {
+                sendSystemMessage(`❌ O comando /${commandName} já existe. Use outro nome.`);
+                return true;
+            }
+            // Inserir novo comando
+            await db.from('meme_commands').insert({
+                command: commandName,
+                url: url
+            });
+            sendSystemMessage(`✅ Comando /${commandName} adicionado com sucesso! Use /gif ${commandName} para enviar.`);
+            // Recarregar comandos de meme no frontend
+            await loadMemeCommands();
+        } catch (e) {
+            sendSystemMessage(`❌ Erro ao adicionar GIF: ${e.message}`);
+        }
+        return true;
+    }
+
     if (cmd === '/rankingsend') {
         if (!['admin', 'supervisor'].includes(currentUser.role)) {
             sendSystemMessage(`❌ Apenas administradores e supervisores podem usar este comando.`);
@@ -2201,7 +2272,97 @@ async function processGeneralCommands(content) {
         return true;
     }
 
+
+    // /crypto btc - Cotação de criptomoeda (com mapeamento de símbolos)
+    if (cmd === '/crypto') {
+        if (args.length === 0) {
+            sendSystemMessage(`❌ Use: /crypto btc (ou eth, sol, ltc, xrp, doge, ada, dot, matic, bnb)`);
+            return true;
+        }
+        let symbol = args[0].toLowerCase();
+        // Mapeamento de símbolos comuns para IDs da CoinGecko
+        const symbolToId = {
+            'btc': 'bitcoin',
+            'eth': 'ethereum',
+            'sol': 'solana',
+            'ltc': 'litecoin',
+            'xrp': 'ripple',
+            'doge': 'dogecoin',
+            'ada': 'cardano',
+            'dot': 'polkadot',
+            'matic': 'polygon',
+            'bnb': 'binancecoin'
+        };
+        let coinId = symbolToId[symbol];
+        if (!coinId) {
+            sendSystemMessage(`❌ Moeda "${symbol}" não suportada. Use: btc, eth, sol, ltc, xrp, doge, ada, dot, matic, bnb`);
+            return true;
+        }
+        try {
+            const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=brl`);
+            const data = await response.json();
+            if (!data[coinId] || !data[coinId].brl) {
+                sendSystemMessage(`❌ Moeda "${symbol}" não encontrada. Tente novamente mais tarde.`);
+                return true;
+            }
+            const price = data[coinId].brl.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+            sendSystemMessage(`💰 ${symbol.toUpperCase()}: ${price}`);
+        } catch (e) {
+            console.error(e);
+            sendSystemMessage(`❌ Erro ao buscar cotação. Tente novamente.`);
+        }
+        return true;
+    }
+
+
+    // /dolar - Cotação do dólar
+    if (cmd === '/dolar') {
+        try {
+            // API do Banco Central (gratuita)
+            const response = await fetch('https://economia.awesomeapi.com.br/json/last/USD-BRL');
+            const data = await response.json();
+            const bid = parseFloat(data.USDBRL.bid).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+            const change = parseFloat(data.USDBRL.pctChange).toFixed(2);
+            sendSystemMessage(`💵 Dólar comercial: ${bid} (variação: ${change}%)`);
+        } catch (e) {
+            sendSystemMessage(`❌ Erro ao buscar cotação. Tente novamente.`);
+        }
+        return true;
+    }
+
+    // /rps pedra - Joga pedra, papel ou tesoura
+    if (cmd === '/rps') {
+        if (args.length === 0) {
+            sendSystemMessage(`❌ Use: /rps pedra, /rps papel ou /rps tesoura`);
+            return true;
+        }
+        const choices = ['pedra', 'papel', 'tesoura'];
+        const playerChoice = args[0].toLowerCase();
+        if (!choices.includes(playerChoice)) {
+            sendSystemMessage(`❌ Opção inválida. Use pedra, papel ou tesoura.`);
+            return true;
+        }
+        const botChoice = choices[Math.floor(Math.random() * 3)];
+        let result = '';
+        if (playerChoice === botChoice) {
+            result = 'Empate! 🤝';
+        } else if (
+            (playerChoice === 'pedra' && botChoice === 'tesoura') ||
+            (playerChoice === 'papel' && botChoice === 'pedra') ||
+            (playerChoice === 'tesoura' && botChoice === 'papel')
+        ) {
+            result = 'Você ganhou! 🎉';
+        } else {
+            result = 'Eu ganhei! 🤖';
+        }
+        sendSystemMessage(`🎮 Você escolheu **${playerChoice}**. Eu escolhi **${botChoice}**. ${result}`);
+        return true;
+    }
+
     return false;
+
+
+    
 }
 
 
@@ -2278,6 +2439,17 @@ function cmdHelp() {
                         <div class="help-cat-title">✨ Formatação</div>
                         <div class="help-cmd"><span class="cmd">**negrito**</span> <span class="cmd">*itálico*</span> <span class="cmd">__sublinhado__</span> <span class="cmd">~~riscado~~</span></div>
                         <div class="help-cmd">Links são automaticamente azuis e clicáveis 🔗</div>
+                    </div>
+
+                    <div class="help-category">
+                        <div class="help-cat-title">📈 Cotações</div>
+                        <div class="help-cmd"><span class="cmd">/crypto btc</span> – Preço de criptomoeda (BTC, ETH...)</div>
+                        <div class="help-cmd"><span class="cmd">/dolar</span> – Cotação do dólar comercial</div>
+                    </div>
+                    <div class="help-category">
+                        <div class="help-cat-title">🎲 Mais Diversão</div>
+                        <div class="help-cmd"><span class="cmd">/quote</span> – Frase motivacional</div>
+                        <div class="help-cmd"><span class="cmd">/rps pedra</span> – Jogue pedra, papel ou tesoura</div>
                     </div>
                 </div>
                 <div class="help-footer">
@@ -2511,4 +2683,72 @@ async function getRankingData() {
     const userMap = {};
     users.forEach(u => { userMap[u.id] = u; });
     return { ranking, userMap };
+}
+
+
+
+//=========================================================MUTED===============================================================
+async function isUserMuted(userId) {
+    try {
+        const { data, error } = await db
+            .from('muted_users')
+            .select('muted_until')
+            .eq('user_id', userId)
+            .maybeSingle();
+        if (error || !data) return false;
+        const mutedUntil = new Date(data.muted_until);
+        if (mutedUntil > new Date()) {
+            return mutedUntil;
+        } else {
+            // Limpar mute expirado
+            await db.from('muted_users').delete().eq('user_id', userId);
+            return false;
+        }
+    } catch (e) {
+        console.warn(e);
+        return false;
+    }
+}
+
+
+async function addWarning(userId, warnedBy, reason) {
+    await db.from('user_warnings').insert({
+        user_id: userId,
+        warned_by: warnedBy,
+        reason: reason
+    });
+    // Contar avisos
+    const { count, error } = await db
+        .from('user_warnings')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', userId);
+    if (error) return 0;
+    return count || 0;
+}
+
+async function getWarningCount(userId) {
+    const { count, error } = await db
+        .from('user_warnings')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', userId);
+    if (error) return 0;
+    return count || 0;
+}
+
+async function getWarnLimit() {
+    const { data } = await db
+        .from('system_settings')
+        .select('value')
+        .eq('key', 'warn_limit')
+        .single();
+    return data ? parseInt(data.value) : 3;
+}
+
+async function getMuteDurationMinutes() {
+    const { data } = await db
+        .from('system_settings')
+        .select('value')
+        .eq('key', 'mute_duration_minutes')
+        .single();
+    return data ? parseInt(data.value) : 30;
 }
