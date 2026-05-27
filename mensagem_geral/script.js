@@ -7,6 +7,7 @@ let replyToMessage = null; // { id, username, content }
 const REACTIONS = ['😂', '😡', '👍', '👎', '❤️', '💰'];
 let latestAnnouncementId = null;
 let announcementRealtimeChannel = null;
+let currentPinnedMessage = null;
 let memeCommands = {};               // Será preenchido do banco
 
 
@@ -56,6 +57,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Carregar mensagens
     await loadGeralMessages();
+
+    await loadPinnedMessage();
 
     // Iniciar polling
     startPolling();
@@ -127,8 +130,6 @@ function renderMessage(msg, prepend = false) {
     const isCurrentAdmin = currentUser.role === 'admin';
     const isCurrentModerator = currentUser.role === 'moderator';
     const isCurrentSupervisor = currentUser.role === 'supervisor';
-    const isAuthorAdmin = user.role === 'admin';
-    const isAuthorModerator = user.role === 'moderator';
 
     // Determinar permissões de edição/exclusão
     let canEdit = false;
@@ -153,14 +154,17 @@ function renderMessage(msg, prepend = false) {
             canDelete = !msg.deleted;
         }
     }
-    
+
+    // ✅ Quem pode fixar? Admin, supervisor ou moderador
+    const canPin = currentUser.role === 'admin' || currentUser.role === 'supervisor' || currentUser.role === 'moderator';
+
     const roleColor = getRoleColor(user.role);
-    
+
     const div = document.createElement('div');
     div.className = 'geral-message' + (isOwn ? ' geral-message-own' : '');
     div.id = `msg-${msg.id}`;
     div.dataset.messageId = msg.id;
-    
+
     // Se a mensagem foi deletada (soft delete)
     if (msg.deleted) {
         div.innerHTML = `
@@ -176,7 +180,7 @@ function renderMessage(msg, prepend = false) {
         container.appendChild(div);
         return;
     }
-    
+
     // Referência da mensagem respondida
     let replyRefHTML = '';
     if (msg.reply_to) {
@@ -189,11 +193,14 @@ function renderMessage(msg, prepend = false) {
             </div>
         `;
     }
-    
-    // Botões de ação (editar/excluir)
+
+    // ✅ Botões de ação (editar/excluir/fixar)
     let actionsHTML = '';
-    if (canEdit || canDelete) {
+    if (canEdit || canDelete || canPin) {
         actionsHTML = `<div class="geral-message-actions">`;
+        if (canPin) {
+            actionsHTML += `<button class="msg-action-btn pin-btn" onclick="event.stopPropagation(); togglePinMessage('${msg.id}')">📌 Fixar</button>`;
+        }
         if (canEdit) {
             actionsHTML += `<button class="msg-action-btn edit-btn" onclick="event.stopPropagation(); showEditGeralModal('${msg.id}', '${escapeHtml(msg.content).replace(/'/g, "\\'")}')">Editar</button>`;
         }
@@ -202,31 +209,28 @@ function renderMessage(msg, prepend = false) {
         }
         actionsHTML += `</div>`;
     }
-    
+
     // 🔥 CONVERSÃO DE COMANDO DE MEME E MENÇÕES DESTACADAS 🔥
     let messageHtml = '';
     const trimmedContent = msg.content.trim();
     const memeUrl = memeCommands[trimmedContent];
-    
+
     if (memeUrl) {
         messageHtml = `<img src="${memeUrl}" alt="meme" class="meme-gif" loading="lazy" onclick="window.open(this.src)">`;
     } else {
-        // Substituir @menções por spans clicáveis COM DESTAQUE PARA O DESTINATÁRIO
         let processedContent = escapeHtml(msg.content);
-        // Regex para capturar @username (letras, números, underscore)
         processedContent = processedContent.replace(/@([a-z0-9_]+)/gi, (match, username) => {
             const userExists = Object.values(allUsers).some(u => u.username.toLowerCase() === username.toLowerCase());
             if (!userExists) return match;
-            // Verifica se o username mencionado é o usuário atual (destinatário)
             const isMentioningMe = username.toLowerCase() === currentUser.username.toLowerCase();
             const extraClass = isMentioningMe ? ' mention-self' : '';
             return `<span class="mention${extraClass}" data-username="${username}" onclick="showUserProfileByUsername('${username}')">@${username}</span>`;
         });
         messageHtml = processedContent;
     }
-    
+
     const editedMark = msg.edited ? ' <span class="edited-mark">(editado)</span>' : '';
-    
+
     div.innerHTML = `
         <div class="geral-message-avatar" onclick="showUserProfile('${user.id || msg.user_id}')">
             ${user.avatar_url ? `<img src="${escapeHtml(user.avatar_url)}">` : getInitials(user.username || 'U')}
@@ -245,7 +249,7 @@ function renderMessage(msg, prepend = false) {
             </div>
         </div>
     `;
-    
+
     if (prepend) {
         container.insertBefore(div, container.firstChild);
     } else {
@@ -1011,4 +1015,84 @@ async function showNotification(title, body, icon, data) {
         data: data || { url: window.location.href },
         vibrate: [200, 100, 200]
     });
+}
+
+
+
+async function loadPinnedMessage() {
+    try {
+        const { data: pinned, error } = await db
+            .from('pinned_geral_messages')
+            .select('*, message:geral_messages(*)')
+            .order('pinned_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        if (error) throw error;
+        if (pinned) {
+            currentPinnedMessage = pinned.message;
+            renderPinnedBanner(pinned.message);
+        } else {
+            currentPinnedMessage = null;
+            const banner = document.getElementById('pinnedMessageBanner');
+            if (banner) banner.style.display = 'none';
+        }
+    } catch (e) {
+        console.warn('Erro ao carregar mensagem fixada:', e);
+    }
+}
+
+function renderPinnedBanner(message) {
+    let banner = document.getElementById('pinnedMessageBanner');
+    if (!banner) {
+        const messagesContainer = document.getElementById('geralMessages');
+        if (!messagesContainer) return;
+        banner = document.createElement('div');
+        banner.id = 'pinnedMessageBanner';
+        banner.className = 'pinned-message-banner';
+        messagesContainer.parentNode.insertBefore(banner, messagesContainer);
+    }
+    const user = allUsers[message.user_id] || { username: 'Usuário' };
+    const roleColor = getRoleColor(user.role);
+    banner.innerHTML = `
+        <div class="pinned-icon">📌</div>
+        <div class="pinned-content">
+            <div class="pinned-header">
+                <span class="pinned-author" style="color:${roleColor}">${escapeHtml(user.username)}</span>
+            </div>
+            <div class="pinned-message-text">${escapeHtml(message.content.substring(0, 100))}${message.content.length > 100 ? '...' : ''}</div>
+        </div>
+        <button class="pinned-close" onclick="event.stopPropagation(); scrollToMessage('${message.id}')">↩️ Ir</button>
+    `;
+    banner.style.display = 'flex';
+    banner.onclick = () => scrollToMessage(message.id);
+}
+
+async function togglePinMessage(messageId) {
+    if (!['admin', 'supervisor'].includes(currentUser.role)) {
+        showToast('Você não tem permissão para fixar mensagens', 'error');
+        return;
+    }
+    try {
+        // Verificar se já existe uma mensagem fixada
+        const { data: existing, error: checkError } = await db
+            .from('pinned_geral_messages')
+            .select('id')
+            .limit(1);
+        if (checkError) throw checkError;
+        
+        if (existing && existing.length > 0) {
+            const confirmReplace = confirm('Já existe uma mensagem fixada. Deseja substituir?');
+            if (!confirmReplace) return;
+            await db.from('pinned_geral_messages').delete();
+        }
+        
+        await db.from('pinned_geral_messages').insert({
+            message_id: messageId,
+            pinned_by: currentUser.id
+        });
+        showToast('Mensagem fixada com sucesso!', 'success');
+        await loadPinnedMessage();
+    } catch (e) {
+        showToast('Erro ao fixar mensagem: ' + e.message, 'error');
+    }
 }

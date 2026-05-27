@@ -980,3 +980,56 @@ body {
 .mention-self:hover {
     background: #a78bfa !important;
 }
+
+
+/* Banner de mensagem fixada */
+.pinned-message-banner {
+    background: linear-gradient(135deg, #1a1a2e, #16213e);
+    border-left: 4px solid #f59e0b;
+    border-radius: 8px;
+    padding: 10px 16px;
+    margin: 8px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+.pinned-message-banner:hover {
+    background: #1f1f2f;
+    transform: translateY(-1px);
+}
+.pinned-icon {
+    font-size: 20px;
+    flex-shrink: 0;
+}
+.pinned-content {
+    flex: 1;
+    min-width: 0;
+}
+.pinned-header {
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 2px;
+}
+.pinned-message-text {
+    font-size: 13px;
+    color: #d1d5db;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.pinned-close {
+    background: rgba(255,255,255,0.1);
+    border: none;
+    color: #f59e0b;
+    padding: 4px 12px;
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.15s;
+}
+.pinned-close:hover {
+    background: rgba(245,158,11,0.2);
+}
