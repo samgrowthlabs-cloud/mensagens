@@ -18,6 +18,7 @@
   <title>BIDJORCHAT - Admin Panel</title>
   
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   
   <link rel="stylesheet" href="../styles/variables.css">
   <link rel="stylesheet" href="../styles/global.css">
@@ -179,24 +180,16 @@
         </div>
       </section>
 
-
-      <!-- MEMES/GIFS (apenas admin e supervisor) -->
-      <section class="memes-section" id="memesSection" style="display:none;">
-        <div class="section-header">
-          <h2 class="section-title">🎬 Comandos de Memes/GIFs</h2>
-          <button class="btn-add-user" onclick="showCreateMemeModal()">+ Novo Comando</button>
-        </div>
-        <div class="table-container" style="max-height: 400px; overflow-y: auto;">
-          <table class="admin-table">
-            <thead>
-              <tr><th>Comando</th><th>URL do GIF/WebP</th><th>Ações</th</tr>
-            </thead>
-            <tbody id="memesTableBody">
-              <tr><td colspan="3" style="text-align:center;padding:20px;">Carregando...</td</tr>
-            </tbody>
-          </table>
-        </div>
+      <!-- GRÁFICO DE MENSAGENS -->
+      <section class="chart-section" id="chartSection" style="display:none; margin-bottom: 40px;">
+          <h2 class="section-title">📈 Mensagens por dia (últimos 7 dias)</h2>
+          <div style="background: #0f0f0f; border-radius: 16px; padding: 16px;">
+              <canvas id="messagesChart" style="max-height: 300px; width: 100%;"></canvas>
+          </div>
       </section>
+
+
+      
 
       <!-- AÇÕES EM MASSA (apenas admin) -->
       <section class="mass-actions-section" id="massActions" style="display:none;">
@@ -300,6 +293,24 @@
               <tr>
                 <td colspan="5" style="text-align:center;padding:20px;">Nenhum anúncio</td>
               </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- MEMES/GIFS (apenas admin e supervisor) -->
+      <section class="memes-section" id="memesSection" style="display:none;">
+        <div class="section-header">
+          <h2 class="section-title">🎬 Comandos de Memes/GIFs</h2>
+          <button class="btn-add-user" onclick="showCreateMemeModal()">+ Novo Comando</button>
+        </div>
+        <div class="table-container" style="max-height: 400px; overflow-y: auto;">
+          <table class="admin-table">
+            <thead>
+              <tr><th>Comando</th><th>URL do GIF/WebP</th><th>Ações</th</tr>
+            </thead>
+            <tbody id="memesTableBody">
+              <tr><td colspan="3" style="text-align:center;padding:20px;">Carregando...</td</tr>
             </tbody>
           </table>
         </div>

@@ -7,6 +7,7 @@ let currentSort = { field: 'username', direction: 'asc' };
 let filteredUsers = [];
 let statsInterval = null;
 let reactionsPollInterval = null; // polling das reações dos anúncios
+let messagesChart = null;
 
 
 
@@ -92,6 +93,7 @@ async function cleanOldGeralMessages() {
         await logAdminAction('CLEAN_OLD_GERAL_MESSAGES', { days: 7 });
         if (error) throw error;
         showToast(`Mensagens antigas removidas com sucesso`, 'success');
+        await loadMessagesChart();
         await loadActivityLogs();
     } catch (e) {
         showToast('Erro ao limpar mensagens: ' + e.message, 'error');
@@ -268,10 +270,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     currentUserId = user.id;
 
     // Mostrar seção de memes apenas para admin e supervisor
-    if (currentUserRole === 'admin' || currentUserRole === 'supervisor') {
-    const memesSection = document.getElementById('memesSection');
-    if (memesSection) memesSection.style.display = 'block';
-    loadMemes(); // carregar a tabela
+    if (currentUserRole === 'admin' || currentUserRole === 'supervisor' || currentUserRole === 'moderator') {
+        const memesSection = document.getElementById('memesSection');
+        if (memesSection) memesSection.style.display = 'block';
+        loadMemes(); // carregar a tabela
+    }
+
+     // GRAFICO DE MENSAGENS
+    if (currentUserRole === 'admin' || currentUserRole === 'supervisor' || currentUserRole === 'moderator') {
+        const chartSection = document.getElementById('chartSection');
+        if (chartSection) chartSection.style.display = 'block';
+        loadMessagesChart(); // carrega o gráfico
     }
         
     // Ajustar interface conforme o cargo
@@ -944,19 +953,40 @@ async function deleteAllUsers() {
 }
 async function deleteAllPrivateMessages() {
     showPasswordModal('Apagar mensagens privadas', async () => {
-        try { const { error } = await db.from('messages').delete().gt('created_at', '2000-01-01'); if (error) throw error; showToast('Mensagens privadas apagadas.', 'success'); await loadStats(); await loadActivityLogs(); } 
+        try { 
+            const { error } = await db.from('messages').delete().gt('created_at', '2000-01-01'); 
+            if (error) throw error;
+            showToast('Mensagens privadas apagadas.', 'success');
+            await loadStats();
+            await loadActivityLogs();
+            await loadMessagesChart();
+        } 
         catch (e) { showToast('Erro: ' + e.message, 'error'); }
     });
 }
 async function deleteAllGeralMessages() {
     showPasswordModal('Apagar mensagens gerais', async () => {
-        try { const { error } = await db.from('geral_messages').delete().gt('created_at', '2000-01-01'); if (error) throw error; showToast('Mensagens gerais apagadas.', 'success'); await loadStats(); await loadActivityLogs(); } 
+        try { 
+            const { error } = await db.from('geral_messages').delete().gt('created_at', '2000-01-01'); 
+            if (error) throw error; 
+            showToast('Mensagens gerais apagadas.', 'success'); 
+            await loadStats(); 
+            await loadActivityLogs();
+            await loadMessagesChart();
+        } 
         catch (e) { showToast('Erro: ' + e.message, 'error'); }
     });
 }
 async function deleteAllMessages() {
     showPasswordModal('Apagar TODAS as mensagens', async () => {
-        try { await db.from('messages').delete().gt('created_at', '2000-01-01'); await db.from('geral_messages').delete().gt('created_at', '2000-01-01'); showToast('Todas as mensagens foram apagadas.', 'success'); await loadStats(); await loadActivityLogs(); } 
+        try { 
+            await db.from('messages').delete().gt('created_at', '2000-01-01'); 
+            await db.from('geral_messages').delete().gt('created_at', '2000-01-01'); 
+            showToast('Todas as mensagens foram apagadas.', 'success'); 
+            await loadStats(); 
+            await loadActivityLogs();
+            await loadMessagesChart();
+        } 
         catch (e) { showToast('Erro: ' + e.message, 'error'); }
     });
 }
@@ -1140,4 +1170,106 @@ function getRoleColor(role) {
 }
 function removeAdminOption() {
     document.querySelectorAll('select.form-input option[value="admin"]').forEach(opt => opt.remove());
+}
+
+
+
+
+async function loadMessagesChart() {
+    try {
+        // Data de 7 dias atrás
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        const startDate = sevenDaysAgo.toISOString();
+
+        // Buscar mensagens privadas
+        const { data: privateMsgs, error: err1 } = await db
+            .from('messages')
+            .select('created_at')
+            .gte('created_at', startDate);
+        if (err1) throw err1;
+
+        // Buscar mensagens gerais
+        const { data: geralMsgs, error: err2 } = await db
+            .from('geral_messages')
+            .select('created_at')
+            .gte('created_at', startDate);
+        if (err2) throw err2;
+
+        // Combinar todas as mensagens
+        const allMessages = [...(privateMsgs || []), ...(geralMsgs || [])];
+        
+        // Agrupar por dia (YYYY-MM-DD)
+        const daysMap = new Map();
+        for (let i = 0; i <= 6; i++) {
+            const date = new Date();
+            date.setDate(date.getDate() - i);
+            const key = date.toISOString().slice(0,10);
+            daysMap.set(key, { date: key, count: 0 });
+        }
+
+        allMessages.forEach(msg => {
+            const dateKey = msg.created_at.slice(0,10);
+            if (daysMap.has(dateKey)) {
+                daysMap.get(dateKey).count++;
+            }
+        });
+
+        // Ordenar os dias do mais antigo para o mais recente
+        const sortedDays = Array.from(daysMap.values()).reverse();
+        const labels = sortedDays.map(d => {
+            const [year, month, day] = d.date.split('-');
+            return `${day}/${month}`;
+        });
+        const data = sortedDays.map(d => d.count);
+
+        // Renderizar ou atualizar gráfico
+        const ctx = document.getElementById('messagesChart').getContext('2d');
+        if (messagesChart) {
+            messagesChart.data.labels = labels;
+            messagesChart.data.datasets[0].data = data;
+            messagesChart.update();
+        } else {
+            messagesChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Mensagens (privadas + geral)',
+                        data: data,
+                        borderColor: '#8b5cf6',
+                        backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                        borderWidth: 2,
+                        tension: 0.3,
+                        fill: true,
+                        pointBackgroundColor: '#8b5cf6',
+                        pointBorderColor: '#fff',
+                        pointRadius: 4,
+                        pointHoverRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: { labels: { color: '#e0e0e0' } },
+                        tooltip: { backgroundColor: '#1f1f1f' }
+                    },
+                    scales: {
+                        y: { 
+                            beginAtZero: true, 
+                            grid: { color: '#2a2a2a' },
+                            ticks: { color: '#a0a0a0' }
+                        },
+                        x: { 
+                            grid: { display: false },
+                            ticks: { color: '#a0a0a0' }
+                        }
+                    }
+                }
+            });
+        }
+    } catch (e) {
+        console.error('Erro ao carregar gráfico:', e);
+    }
 }

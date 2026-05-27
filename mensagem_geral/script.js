@@ -59,7 +59,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Iniciar polling
     startPolling();
-    
+
         // Eventos
     setupEventListeners();
 
@@ -129,7 +129,7 @@ function renderMessage(msg, prepend = false) {
     const isCurrentSupervisor = currentUser.role === 'supervisor';
     const isAuthorAdmin = user.role === 'admin';
     const isAuthorModerator = user.role === 'moderator';
-    
+
     // Determinar permissões de edição/exclusão
     let canEdit = false;
     let canDelete = false;
@@ -203,17 +203,26 @@ function renderMessage(msg, prepend = false) {
         actionsHTML += `</div>`;
     }
     
-    // 🔥 CONVERSÃO DE COMANDO DE MEME 🔥
+    // 🔥 CONVERSÃO DE COMANDO DE MEME E MENÇÕES DESTACADAS 🔥
     let messageHtml = '';
     const trimmedContent = msg.content.trim();
     const memeUrl = memeCommands[trimmedContent];
     
     if (memeUrl) {
-        // É um comando de meme – exibe o GIF/WebP
         messageHtml = `<img src="${memeUrl}" alt="meme" class="meme-gif" loading="lazy" onclick="window.open(this.src)">`;
     } else {
-        // Texto normal
-        messageHtml = escapeHtml(msg.content);
+        // Substituir @menções por spans clicáveis COM DESTAQUE PARA O DESTINATÁRIO
+        let processedContent = escapeHtml(msg.content);
+        // Regex para capturar @username (letras, números, underscore)
+        processedContent = processedContent.replace(/@([a-z0-9_]+)/gi, (match, username) => {
+            const userExists = Object.values(allUsers).some(u => u.username.toLowerCase() === username.toLowerCase());
+            if (!userExists) return match;
+            // Verifica se o username mencionado é o usuário atual (destinatário)
+            const isMentioningMe = username.toLowerCase() === currentUser.username.toLowerCase();
+            const extraClass = isMentioningMe ? ' mention-self' : '';
+            return `<span class="mention${extraClass}" data-username="${username}" onclick="showUserProfileByUsername('${username}')">@${username}</span>`;
+        });
+        messageHtml = processedContent;
     }
     
     const editedMark = msg.edited ? ' <span class="edited-mark">(editado)</span>' : '';
@@ -243,6 +252,12 @@ function renderMessage(msg, prepend = false) {
         container.appendChild(div);
         container.scrollTop = container.scrollHeight;
     }
+}
+
+
+function showUserProfileByUsername(username) {
+    const user = Object.values(allUsers).find(u => u.username.toLowerCase() === username.toLowerCase());
+    if (user) showUserProfile(user.id);
 }
 
 function showEditGeralModal(messageId, currentContent) {
@@ -359,23 +374,43 @@ async function checkNewMessages() {
             messages.forEach(msg => {
                 if (msg.user_id !== currentUser.id) {
                     renderMessage(msg);
+                    
+                    // 🆕 VERIFICA SE O USUÁRIO ATUAL FOI MENCIONADO
+                    const mentions = msg.mentions || [];
+                    if (mentions.includes(currentUser.id)) {
+                        const sender = allUsers[msg.user_id]?.username || 'Usuário';
+                        // Notifica mesmo se o documento estiver visível? 
+                        // Para não incomodar, notifico apenas se a página estiver oculta (background)
+                        // Se quiser notificar sempre, remova o if(document.hidden)
+                        if (document.hidden) {
+                            showNotification(
+                                `🔔 ${sender} mencionou você`,
+                                msg.content.length > 100 ? msg.content.substring(0, 100) + '...' : msg.content,
+                                allUsers[msg.user_id]?.avatar_url,
+                                { url: '/mensagem_geral/index.html' }
+                            );
+                        }
+                    }
                 }
             });
             lastMessageCheck = messages[messages.length - 1].created_at;
 
+            // Notificação geral de nova mensagem (só quando a página está oculta)
             if (document.hidden && messages.length > 0) {
-            const lastMsg = messages[messages.length - 1];
-            const sender = allUsers[lastMsg.user_id]?.username || 'Usuário';
-            showNotification(
-                `Nova mensagem no chat geral`,
-                `${sender}: ${lastMsg.content.substring(0, 100)}`,
-                allUsers[lastMsg.user_id]?.avatar_url || null,
-                { url: '/mensagem_geral/index.html' }
-            );
-        }
+                const lastMsg = messages[messages.length - 1];
+                const sender = allUsers[lastMsg.user_id]?.username || 'Usuário';
+                showNotification(
+                    `Nova mensagem no chat geral`,
+                    `${sender}: ${lastMsg.content.substring(0, 100)}`,
+                    allUsers[lastMsg.user_id]?.avatar_url,
+                    { url: '/mensagem_geral/index.html' }
+                );
+            }
         }
         
-    } catch (e) {}
+    } catch (e) {
+        console.warn('Erro ao verificar novas mensagens:', e);
+    }
 }
 
 // ========== ENVIO ==========
@@ -443,9 +478,29 @@ async function sendGeralMessage() {
     
     input.disabled = true;
     
+    // 🆕 Extrair menções do conteúdo
+    const mentionPattern = /@([a-z0-9_]+)/gi;
+    const mentionedUsernames = [];
+    let match;
+    while ((match = mentionPattern.exec(content)) !== null) {
+        mentionedUsernames.push(match[1].toLowerCase());
+    }
+    
+    // Buscar IDs dos usuários mencionados
+    const mentionIds = [];
+    if (mentionedUsernames.length > 0) {
+        for (const username of mentionedUsernames) {
+            const user = Object.values(allUsers).find(u => u.username.toLowerCase() === username);
+            if (user && user.id !== currentUser.id) { // não mencionar a si mesmo
+                mentionIds.push(user.id);
+            }
+        }
+    }
+    
     const messageData = {
         user_id: currentUser.id,
-        content: content
+        content: content,
+        mentions: mentionIds  // array de UUIDs
     };
     
     // Adiciona referência se estiver respondendo
@@ -456,38 +511,43 @@ async function sendGeralMessage() {
             username: replyToMessage.username,
             content: replyToMessage.content
         };
-        cancelReply(); // limpa a resposta após enviar
+        cancelReply();
     }
     
     try {
-        const { data: msg } = await db
+        const { data: msg, error } = await db
             .from('geral_messages')
             .insert(messageData)
             .select()
             .single();
         
+        if (error) throw error;
+        
         if (msg) {
             renderMessage(msg);
             input.value = '';
             input.style.height = 'auto';
+            
+            // Notificar usuários mencionados (já serão notificados no polling, mas opcional aqui)
+            for (const mentionedId of mentionIds) {
+                if (mentionedId !== currentUser.id) {
+                    const mentionedUser = allUsers[mentionedId];
+                    if (mentionedUser) {
+                        await showNotification(
+                            `🔔 Você foi mencionado por ${currentUser.username}`,
+                            content.length > 100 ? content.substring(0, 100) + '...' : content,
+                            currentUser.avatar_url,
+                            { url: '/mensagem_geral/index.html' }
+                        );
+                    }
+                }
+            }
         }
     } catch (e) {
-        showToast('Erro ao enviar', 'error');
+        showToast('Erro ao enviar: ' + e.message, 'error');
     } finally {
         input.disabled = false;
         input.focus();
-    }
-
-    try {
-        await databaseManager.checkRateLimit(currentUser.id, 'geral');
-        } catch (rateError) {
-            const match = rateError.message.match(/(\d+)\s+segundo/);
-            if (match) {
-                showRateLimitNotification(parseInt(match[1]));
-            } else {
-                showToast(rateError.message, 'warning');
-            }
-            return;
     }
 }
 
@@ -926,4 +986,29 @@ async function loadMemeCommands() {
     } catch (e) {
         console.warn('Erro ao carregar comandos de meme:', e);
     }
+}
+
+
+// ========== NOTIFICAÇÕES PWA ==========
+async function showNotification(title, body, icon, data) {
+    if (!('Notification' in window)) return;
+    if (Notification.permission === 'default') {
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') return;
+    }
+    if (Notification.permission !== 'granted') return;
+    const registration = await navigator.serviceWorker.getRegistration();
+    if (!registration) {
+        new Notification(title, { body, icon, data });
+        return;
+    }
+    registration.showNotification(title, {
+        body: body,
+        icon: icon || '',
+        badge: icon || '',
+        tag: 'bidjorchat',
+        renotify: true,
+        data: data || { url: window.location.href },
+        vibrate: [200, 100, 200]
+    });
 }

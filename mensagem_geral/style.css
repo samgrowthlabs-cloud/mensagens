@@ -954,3 +954,29 @@ body {
 .meme-gif:hover {
     transform: scale(1.02);
 }
+
+/* Menção padrão (para qualquer pessoa) */
+.mention {
+    background: rgba(139, 92, 246, 0.1);
+    color: #a78bfa;
+    padding: 0 2px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.mention:hover {
+    background: rgba(139, 92, 246, 0.2);
+    text-decoration: underline;
+}
+
+/* Menção destacada (quando o usuário logado é o mencionado) */
+.mention-self {
+    background: #8b5cf6 !important;
+    color: white !important;
+    font-weight: 600;
+    padding: 0 4px;
+    box-shadow: 0 0 4px rgba(139, 92, 246, 0.5);
+}
+.mention-self:hover {
+    background: #a78bfa !important;
+}
