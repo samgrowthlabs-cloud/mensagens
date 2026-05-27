@@ -47,6 +47,70 @@ function linkifyAndEscape(text) {
     return escapedText;
 }
 
+// ========== AUTOCOMPLETE DE COMANDOS ==========
+const commandList = [
+    { cmd: '/ajuda', desc: 'Mostra esta ajuda' },
+    { cmd: '/help', desc: 'Mostra esta ajuda' },
+    { cmd: '/avatar', desc: 'Ver perfil (seu ou de @usuario)' },
+    { cmd: '/dado', desc: 'Rola um dado (padrão 6 lados)' },
+    { cmd: '/caracoroa', desc: 'Cara ou coroa' },
+    { cmd: '/simounao', desc: 'Resposta mágica (Sim/Não)' },
+    { cmd: '/choose', desc: 'Escolhe aleatoriamente uma opção' },
+    { cmd: '/tweet', desc: 'Publica um tweet estilizado' },
+    { cmd: '/give', desc: 'Dá um presente simbólico' },
+    { cmd: '/sondagem', desc: 'Cria enquete com várias opções' },
+    { cmd: '/vote', desc: 'Cria enquete Sim/Não' },
+    { cmd: '/gif', desc: 'Envia GIF cadastrado' },
+    { cmd: '/hora', desc: 'Data/hora atual' },
+    { cmd: '/ranking', desc: 'Exibe ranking semanal (modal)' },
+    { cmd: '/rankingsend', desc: 'Envia ranking no chat (admin/supervisor)' },
+    { cmd: '/clear_sys', desc: 'Apaga mensagens do robô (admin/supervisor)' },
+    { cmd: '/clear', desc: 'Apaga TODO o chat (admin/supervisor)' }
+];
+
+let activeSuggestions = false;
+let selectedSuggestionIndex = -1;
+
+function showCommandSuggestions(inputElement, filterText) {
+    const container = inputElement.parentElement;
+    let suggestionsDiv = document.getElementById('cmdSuggestions');
+    if (!suggestionsDiv) {
+        suggestionsDiv = document.createElement('div');
+        suggestionsDiv.id = 'cmdSuggestions';
+        suggestionsDiv.className = 'cmd-suggestions';
+        container.style.position = 'relative';
+        container.appendChild(suggestionsDiv);
+    }
+    const filtered = commandList.filter(c => c.cmd.toLowerCase().startsWith(filterText.toLowerCase()));
+    if (filtered.length === 0) {
+        suggestionsDiv.style.display = 'none';
+        return;
+    }
+    suggestionsDiv.style.display = 'block';
+    suggestionsDiv.innerHTML = '';
+    filtered.forEach((cmdObj, idx) => {
+        const item = document.createElement('div');
+        item.className = 'cmd-suggestion-item';
+        if (idx === selectedSuggestionIndex) item.classList.add('selected');
+        item.innerHTML = `<span class="cmd-name">${cmdObj.cmd}</span><span class="cmd-desc">${cmdObj.desc}</span>`;
+        item.onclick = () => {
+            inputElement.value = cmdObj.cmd + ' ';
+            suggestionsDiv.style.display = 'none';
+            inputElement.focus();
+            activeSuggestions = false;
+            selectedSuggestionIndex = -1;
+        };
+        suggestionsDiv.appendChild(item);
+    });
+}
+
+function hideCommandSuggestions() {
+    const div = document.getElementById('cmdSuggestions');
+    if (div) div.style.display = 'none';
+    activeSuggestions = false;
+    selectedSuggestionIndex = -1;
+}
+
 
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('🌐 Iniciando chat geral...');
@@ -530,16 +594,64 @@ async function checkNewMessages() {
 // ========== ENVIO ==========
 function setupEventListeners() {
     const input = document.getElementById('geralMessageInput');
-    input.addEventListener('input', () => {
+    input.addEventListener('input', (e) => {
+        // Auto-resize
         input.style.height = 'auto';
         input.style.height = Math.min(input.scrollHeight, 120) + 'px';
-    });
-    input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            sendGeralMessage();
+        
+        // Autocomplete de comandos
+        const text = input.value;
+        if (text.startsWith('/')) {
+            const parts = text.split(/\s+/);
+            const cmdPart = parts[0];
+            activeSuggestions = true;
+            showCommandSuggestions(input, cmdPart);
+        } else {
+            hideCommandSuggestions();
         }
     });
+    // Fechar sugestões ao perder foco
+    input.addEventListener('blur', () => {
+        setTimeout(() => hideCommandSuggestions(), 200);
+    });
+    // Teclas de navegação (opcional)
+    input.addEventListener('keydown', (e) => {
+        const suggestionsDiv = document.getElementById('cmdSuggestions');
+        if (!suggestionsDiv || suggestionsDiv.style.display !== 'block') return;
+        const items = suggestionsDiv.querySelectorAll('.cmd-suggestion-item');
+        if (items.length === 0) return;
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            selectedSuggestionIndex = (selectedSuggestionIndex + 1) % items.length;
+            updateSelectedSuggestion(items, input);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            selectedSuggestionIndex = (selectedSuggestionIndex - 1 + items.length) % items.length;
+            updateSelectedSuggestion(items, input);
+        } else if (e.key === 'Enter') {
+            if (selectedSuggestionIndex >= 0) {
+                e.preventDefault();
+                const selectedItem = items[selectedSuggestionIndex];
+                const cmdText = selectedItem.querySelector('.cmd-name').textContent;
+                input.value = cmdText + ' ';
+                hideCommandSuggestions();
+                input.focus();
+            }
+        }
+    });
+}
+
+function updateSelectedSuggestion(items, input) {
+    items.forEach((item, idx) => {
+        if (idx === selectedSuggestionIndex) {
+            item.classList.add('selected');
+        } else {
+            item.classList.remove('selected');
+        }
+    });
+    // Rolar para o item selecionado
+    const selectedItem = items[selectedSuggestionIndex];
+    if (selectedItem) selectedItem.scrollIntoView({ block: 'nearest' });
 }
 
 

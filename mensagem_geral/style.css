@@ -1723,3 +1723,49 @@ body {
     background: #e08e0b;
     transform: scale(1.02);
 }
+
+/* Dropdown de sugestões de comandos */
+.cmd-suggestions {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    right: 0;
+    background: #1a1a2e;
+    border: 1px solid #2a2a4a;
+    border-radius: 12px;
+    margin-bottom: 8px;
+    max-height: 200px;
+    overflow-y: auto;
+    z-index: 1000;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.5);
+}
+.cmd-suggestion-item {
+    padding: 8px 12px;
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    cursor: pointer;
+    transition: background 0.1s;
+    border-bottom: 1px solid #2a2a2a;
+}
+.cmd-suggestion-item:last-child {
+    border-bottom: none;
+}
+.cmd-suggestion-item:hover,
+.cmd-suggestion-item.selected {
+    background: #2a2a3e;
+}
+.cmd-name {
+    font-family: monospace;
+    font-weight: bold;
+    color: #facc15;
+    background: #0f0f1a;
+    padding: 2px 6px;
+    border-radius: 8px;
+    font-size: 13px;
+}
+.cmd-desc {
+    font-size: 13px;
+    color: #ccc;
+    flex: 1;
+}
