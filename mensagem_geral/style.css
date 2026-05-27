@@ -1033,3 +1033,103 @@ body {
 .pinned-close:hover {
     background: rgba(245,158,11,0.2);
 }
+
+.online-counter {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255,255,255,0.05);
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+.online-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent-online);
+    animation: pulse 1.5s infinite;
+}
+@keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.6; transform: scale(1.2); }
+}
+
+
+
+/* ========== REAÇÕES CORRIGIDAS ========== */
+.geral-message-content {
+    position: relative; /* essencial para o botão flutuante */
+}
+
+.reactions-trigger {
+    position: absolute;
+    top: -8px;
+    right: 4px;
+    background: #1e1e1e;
+    border-radius: 30px;
+    padding: 2px 6px;
+    font-size: 14px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s, transform 0.1s;
+    z-index: 6;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+.geral-message:hover .reactions-trigger {
+    opacity: 1;
+}
+.reactions-trigger:hover {
+    transform: scale(1.1);
+    background: #2a2a2a;
+}
+
+.message-reactions {
+    display: flex;
+    gap: 6px;
+    margin: 8px 0 6px 0;
+    flex-wrap: wrap;
+}
+.reaction-badge {
+    background: rgba(255,255,255,0.06);
+    border-radius: 20px;
+    padding: 2px 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+    border: 1px solid rgba(255,255,255,0.03);
+}
+.reaction-badge:hover {
+    background: rgba(139,92,246,0.2);
+    border-color: #8b5cf6;
+}
+.reaction-badge.active {
+    background: rgba(139,92,246,0.25);
+    border-color: #a78bfa;
+}
+.reaction-emoji {
+    font-size: 13px;
+}
+.reaction-count {
+    font-weight: 500;
+    color: #9ca3af;
+}
+.reaction-badge.active .reaction-count {
+    color: #c4b5fd;
+}
+
+.geral-message-footer {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    margin-top: 6px;
+    flex-wrap: wrap;
+}
+.geral-message-actions {
+    display: flex;
+    gap: 8px;
+}

@@ -5,9 +5,13 @@ let lastMessageCheck = new Date().toISOString();
 let allUsers = {};
 let replyToMessage = null; // { id, username, content }
 const REACTIONS = ['😂', '😡', '👍', '👎', '❤️', '💰'];
+const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '😡'];
 let latestAnnouncementId = null;
 let announcementRealtimeChannel = null;
 let currentPinnedMessage = null;
+let geralChannel = null;
+let pinnedChannel = null;
+let onlineInterval = null;
 let memeCommands = {};               // Será preenchido do banco
 
 
@@ -58,6 +62,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Carregar mensagens
     await loadGeralMessages();
 
+    setupRealtimeSubscriptions();
+
     await loadPinnedMessage();
 
     // Iniciar polling
@@ -66,11 +72,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Eventos
     setupEventListeners();
 
+    startOnlineCounter();
+
+
     startAnnouncementCheck();
     
     window.addEventListener('beforeunload', async () => {
         if (rateLimitTimerInterval) clearInterval(rateLimitTimerInterval);
         stopPolling();
+        stopOnlineCounter();
         if (currentUser) {
             await db.from('users').update({ status: 'offline', last_seen: new Date().toISOString() }).eq('id', currentUser.id);
         }
@@ -123,15 +133,14 @@ async function loadGeralMessages() {
     }
 }
 
-function renderMessage(msg, prepend = false) {
-    const container = document.getElementById('geralMessages');
+
+function createMessageDiv(msg) {
     const user = allUsers[msg.user_id] || { username: 'Desconhecido', role: 'user', avatar_url: null };
     const isOwn = msg.user_id === currentUser.id;
     const isCurrentAdmin = currentUser.role === 'admin';
     const isCurrentModerator = currentUser.role === 'moderator';
     const isCurrentSupervisor = currentUser.role === 'supervisor';
 
-    // Determinar permissões de edição/exclusão
     let canEdit = false;
     let canDelete = false;
 
@@ -155,9 +164,7 @@ function renderMessage(msg, prepend = false) {
         }
     }
 
-    // ✅ Quem pode fixar? Admin, supervisor ou moderador
-    const canPin = currentUser.role === 'admin' || currentUser.role === 'supervisor' || currentUser.role === 'moderator';
-
+    const canPin = ['admin', 'supervisor', 'moderator'].includes(currentUser.role);
     const roleColor = getRoleColor(user.role);
 
     const div = document.createElement('div');
@@ -165,7 +172,6 @@ function renderMessage(msg, prepend = false) {
     div.id = `msg-${msg.id}`;
     div.dataset.messageId = msg.id;
 
-    // Se a mensagem foi deletada (soft delete)
     if (msg.deleted) {
         div.innerHTML = `
             <div class="geral-message-avatar"><span>🗑️</span></div>
@@ -177,11 +183,9 @@ function renderMessage(msg, prepend = false) {
                 <div class="geral-message-text" style="font-style:italic; color:#6b6b6b;">[Mensagem excluída]</div>
             </div>
         `;
-        container.appendChild(div);
-        return;
+        return div;
     }
 
-    // Referência da mensagem respondida
     let replyRefHTML = '';
     if (msg.reply_to) {
         const repliedUser = allUsers[msg.reply_to.user_id];
@@ -194,23 +198,15 @@ function renderMessage(msg, prepend = false) {
         `;
     }
 
-    // ✅ Botões de ação (editar/excluir/fixar)
     let actionsHTML = '';
     if (canEdit || canDelete || canPin) {
         actionsHTML = `<div class="geral-message-actions">`;
-        if (canPin) {
-            actionsHTML += `<button class="msg-action-btn pin-btn" onclick="event.stopPropagation(); togglePinMessage('${msg.id}')">📌 Fixar</button>`;
-        }
-        if (canEdit) {
-            actionsHTML += `<button class="msg-action-btn edit-btn" onclick="event.stopPropagation(); showEditGeralModal('${msg.id}', '${escapeHtml(msg.content).replace(/'/g, "\\'")}')">Editar</button>`;
-        }
-        if (canDelete) {
-            actionsHTML += `<button class="msg-action-btn delete-btn" onclick="event.stopPropagation(); confirmDeleteGeralMessage('${msg.id}')">Excluir</button>`;
-        }
+        if (canPin) actionsHTML += `<button class="msg-action-btn pin-btn" onclick="event.stopPropagation(); togglePinMessage('${msg.id}')">📌 Fixar</button>`;
+        if (canEdit) actionsHTML += `<button class="msg-action-btn edit-btn" onclick="event.stopPropagation(); showEditGeralModal('${msg.id}', '${escapeHtml(msg.content).replace(/'/g, "\\'")}')">Editar</button>`;
+        if (canDelete) actionsHTML += `<button class="msg-action-btn delete-btn" onclick="event.stopPropagation(); confirmDeleteGeralMessage('${msg.id}')">Excluir</button>`;
         actionsHTML += `</div>`;
     }
 
-    // 🔥 CONVERSÃO DE COMANDO DE MEME E MENÇÕES DESTACADAS 🔥
     let messageHtml = '';
     const trimmedContent = msg.content.trim();
     const memeUrl = memeCommands[trimmedContent];
@@ -231,11 +227,13 @@ function renderMessage(msg, prepend = false) {
 
     const editedMark = msg.edited ? ' <span class="edited-mark">(editado)</span>' : '';
 
+    // Estrutura HTML com posicionamento correto
     div.innerHTML = `
         <div class="geral-message-avatar" onclick="showUserProfile('${user.id || msg.user_id}')">
             ${user.avatar_url ? `<img src="${escapeHtml(user.avatar_url)}">` : getInitials(user.username || 'U')}
         </div>
-        <div class="geral-message-content">
+        <div class="geral-message-content" style="position: relative;">
+            <!-- Botão flutuante será inserido aqui via JS (fora do innerHTML) -->
             <div class="geral-message-header">
                 <span class="geral-message-username" style="color:${roleColor}" onclick="showUserProfile('${user.id || msg.user_id}')">${escapeHtml(user.username || 'Usuário')}</span>
                 ${user.role !== 'user' ? `<span class="geral-message-role" style="background:${roleColor}20;color:${roleColor}">${user.role}</span>` : ''}
@@ -243,6 +241,10 @@ function renderMessage(msg, prepend = false) {
             </div>
             ${replyRefHTML}
             <div class="geral-message-text">${messageHtml}${editedMark}</div>
+            
+            <!-- Container de reações (abaixo do texto, antes das ações) -->
+            <div class="message-reactions" id="reactions-${msg.id}"></div>
+            
             <div class="geral-message-footer">
                 <button class="geral-message-reply-btn" onclick="event.stopPropagation(); replyTo('${msg.id}', '${escapeHtml(user.username).replace(/'/g, "\\'")}', '${escapeHtml(msg.content).replace(/'/g, "\\'")}')">↩ Responder</button>
                 ${actionsHTML}
@@ -250,14 +252,50 @@ function renderMessage(msg, prepend = false) {
         </div>
     `;
 
-    if (prepend) {
-        container.insertBefore(div, container.firstChild);
+    // Carregar reações existentes
+    setTimeout(async () => {
+        await loadMessageReactions(msg.id);
+    }, 50);
+
+    // Criar e adicionar botão flutuante de reações (😊) no canto superior direito do conteúdo
+    const contentDiv = div.querySelector('.geral-message-content');
+    if (contentDiv) {
+        const reactionsTrigger = document.createElement('div');
+        reactionsTrigger.className = 'reactions-trigger';
+        reactionsTrigger.innerHTML = '😊';
+        reactionsTrigger.onclick = (e) => {
+            e.stopPropagation();
+            showReactionPicker(reactionsTrigger, msg.id);
+        };
+        // Posiciona absoluto dentro do contentDiv (que tem position relative)
+        contentDiv.appendChild(reactionsTrigger);
+    }
+
+    return div;
+}
+
+function renderMessage(msg, prepend = false) {
+    const container = document.getElementById('geralMessages');
+    const existingDiv = document.getElementById(`msg-${msg.id}`);
+    const newDiv = createMessageDiv(msg);
+
+    if (existingDiv) {
+        // Atualiza mensagem existente (edição, exclusão)
+        existingDiv.replaceWith(newDiv);
     } else {
-        container.appendChild(div);
+        // Nova mensagem
+        if (prepend) {
+            container.insertBefore(newDiv, container.firstChild);
+        } else {
+            container.appendChild(newDiv);
+        }
+    }
+
+    // Só rola para o final se for uma mensagem nova (não atualização)
+    if (!existingDiv && !prepend) {
         container.scrollTop = container.scrollHeight;
     }
 }
-
 
 function showUserProfileByUsername(username) {
     const user = Object.values(allUsers).find(u => u.username.toLowerCase() === username.toLowerCase());
@@ -337,7 +375,7 @@ function openEditModal(messageId, currentContent) {
                 .eq('id', messageId);
             showToast('Mensagem editada!', 'success');
             modal.remove();
-            await loadGeralMessages();
+       
         } catch (e) {
             showToast('Erro ao editar: ' + e.message, 'error');
         }
@@ -744,7 +782,7 @@ async function confirmDeleteGeralMessage(messageId) {
             .update({ deleted: true, deleted_at: new Date().toISOString() })
             .eq('id', messageId);
         showToast('Mensagem excluída', 'success');
-        await loadGeralMessages();
+
     } catch (e) {
         showToast('Erro ao excluir: ' + e.message, 'error');
     }
@@ -1021,16 +1059,24 @@ async function showNotification(title, body, icon, data) {
 
 async function loadPinnedMessage() {
     try {
+        // Busca a primeira fixação (se existir) – limitando a 1
         const { data: pinned, error } = await db
             .from('pinned_geral_messages')
-            .select('*, message:geral_messages(*)')
-            .order('pinned_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
+            .select('message_id')
+            .limit(1);  // importante: limita a 1 resultado
         if (error) throw error;
-        if (pinned) {
-            currentPinnedMessage = pinned.message;
-            renderPinnedBanner(pinned.message);
+        
+        if (pinned && pinned.length > 0) {
+            const messageId = pinned[0].message_id;
+            // Busca a mensagem completa separadamente
+            const { data: message, error: msgError } = await db
+                .from('geral_messages')
+                .select('*')
+                .eq('id', messageId)
+                .single();
+            if (msgError) throw msgError;
+            currentPinnedMessage = message;
+            renderPinnedBanner(message);
         } else {
             currentPinnedMessage = null;
             const banner = document.getElementById('pinnedMessageBanner');
@@ -1068,31 +1114,242 @@ function renderPinnedBanner(message) {
 }
 
 async function togglePinMessage(messageId) {
-    if (!['admin', 'supervisor'].includes(currentUser.role)) {
+    // Permissão: admin, supervisor ou moderador (ajuste conforme sua regra)
+    if (!['admin', 'supervisor', 'moderator'].includes(currentUser.role)) {
         showToast('Você não tem permissão para fixar mensagens', 'error');
         return;
     }
+
     try {
-        // Verificar se já existe uma mensagem fixada
-        const { data: existing, error: checkError } = await db
+        // 1. Verificar se já existe alguma fixação
+        const { data: existing, error: fetchError } = await db
             .from('pinned_geral_messages')
-            .select('id')
+            .select('message_id')
             .limit(1);
-        if (checkError) throw checkError;
-        
-        if (existing && existing.length > 0) {
+        if (fetchError) throw fetchError;
+
+        const hasPinned = existing && existing.length > 0;
+        const currentPinnedId = hasPinned ? existing[0].message_id : null;
+
+        // Se já está fixada a mesma mensagem, não faz nada
+        if (currentPinnedId === messageId) {
+            showToast('Esta mensagem já está fixada', 'info');
+            return;
+        }
+
+        // 2. Se houver fixação, pergunta se quer substituir
+        if (hasPinned) {
             const confirmReplace = confirm('Já existe uma mensagem fixada. Deseja substituir?');
             if (!confirmReplace) return;
-            await db.from('pinned_geral_messages').delete();
+            // Remove a fixação atual
+            const { error: deleteError } = await db
+                .from('pinned_geral_messages')
+                .delete()
+                .neq('id', '00000000-0000-0000-0000-000000000000'); // apaga todas as linhas
+            if (deleteError) throw deleteError;
         }
-        
-        await db.from('pinned_geral_messages').insert({
-            message_id: messageId,
-            pinned_by: currentUser.id
-        });
+
+        // 3. Insere a nova fixação
+        const { error: insertError } = await db
+            .from('pinned_geral_messages')
+            .insert({ message_id: messageId, pinned_by: currentUser.id });
+        if (insertError) throw insertError;
+
         showToast('Mensagem fixada com sucesso!', 'success');
-        await loadPinnedMessage();
+        await loadPinnedMessage(); // recarrega o banner
     } catch (e) {
+        console.error('Erro ao fixar mensagem:', e);
         showToast('Erro ao fixar mensagem: ' + e.message, 'error');
+    }
+}
+
+// ========== CONTADOR ONLINE ==========
+async function updateOnlineCount() {
+    try {
+        const { count, error } = await db
+            .from('users')
+            .select('*', { count: 'exact', head: true })
+            .eq('status', 'online');
+        if (error) throw error;
+        document.getElementById('onlineCount').textContent = count || 0;
+    } catch (e) {
+        console.warn('Erro ao buscar online count:', e);
+    }
+}
+
+// Iniciar o contador (atualiza a cada 10s)
+
+function startOnlineCounter() {
+    updateOnlineCount();
+    onlineInterval = setInterval(updateOnlineCount, 10000);
+}
+function stopOnlineCounter() {
+    if (onlineInterval) clearInterval(onlineInterval);
+}
+
+
+
+
+
+function setupRealtimeSubscriptions() {
+    if (geralChannel) db.removeChannel(geralChannel);
+    if (pinnedChannel) db.removeChannel(pinnedChannel);
+
+    // Canal para mensagens (UPDATE e DELETE)
+    geralChannel = db
+        .channel('geral-messages-changes')
+        .on(
+            'postgres_changes',
+            { event: 'UPDATE', schema: 'public', table: 'geral_messages' },
+            (payload) => {
+                const updatedMsg = payload.new;
+                // Se a mensagem foi marcada como deletada, recria o elemento
+                if (updatedMsg.deleted) {
+                    const msgDiv = document.getElementById(`msg-${updatedMsg.id}`);
+                    if (msgDiv) {
+                        const newDiv = createMessageDiv(updatedMsg);
+                        msgDiv.replaceWith(newDiv);
+                    }
+                } else {
+                    renderMessage(updatedMsg);
+                }
+            }
+        )
+        .on(
+            'postgres_changes',
+            { event: 'DELETE', schema: 'public', table: 'geral_messages' },
+            (payload) => {
+                const deletedId = payload.old.id;
+                const msgDiv = document.getElementById(`msg-${deletedId}`);
+                if (msgDiv) msgDiv.remove();
+            }
+        )
+        .subscribe();
+
+    // Canal para fixações (INSERT/DELETE)
+    pinnedChannel = db
+        .channel('pinned-messages-changes')
+        .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'pinned_geral_messages' },
+            () => {
+                loadPinnedMessage(); // recarrega o banner
+            }
+        )
+        .subscribe();
+
+
+    // Canal para reações
+    db
+        .channel('geral-reactions-changes')
+        .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'geral_message_reactions' },
+            (payload) => {
+                const messageId = payload.new?.message_id || payload.old?.message_id;
+                if (messageId) loadMessageReactions(messageId);
+            }
+        )
+        .subscribe();
+}
+
+
+// ========== REAÇÕES EM MENSAGENS ==========
+
+
+async function loadMessageReactions(messageId) {
+    try {
+        const { data, error } = await db
+            .from('geral_message_reactions')
+            .select('*')
+            .eq('message_id', messageId);
+        if (error) throw error;
+        renderReactions(messageId, data || []);
+    } catch (e) {
+        console.warn('Erro ao carregar reações:', e);
+    }
+}
+
+function renderReactions(messageId, reactions) {
+    const container = document.getElementById(`reactions-${messageId}`);
+    if (!container) return;
+    
+    const grouped = {};
+    reactions.forEach(r => {
+        if (!grouped[r.reaction]) grouped[r.reaction] = { count: 0, users: [] };
+        grouped[r.reaction].count++;
+        grouped[r.reaction].users.push(r.user_id);
+    });
+    
+    if (Object.keys(grouped).length === 0) {
+        container.innerHTML = '';
+        return;
+    }
+    
+    const isOwnReaction = (emoji) => grouped[emoji]?.users.includes(currentUser.id) || false;
+    
+    container.innerHTML = Object.entries(grouped).map(([emoji, data]) => `
+        <div class="reaction-badge ${isOwnReaction(emoji) ? 'active' : ''}" data-emoji="${emoji}" onclick="toggleReaction('${messageId}', '${emoji}')">
+            <span class="reaction-emoji">${emoji}</span>
+            <span class="reaction-count">${data.count}</span>
+        </div>
+    `).join('');
+}
+
+function showReactionPicker(triggerElement, messageId) {
+    const existing = document.querySelector('.reaction-picker');
+    if (existing) existing.remove();
+    
+    const picker = document.createElement('div');
+    picker.className = 'reaction-picker';
+    REACTION_EMOJIS.forEach(emoji => {
+        const btn = document.createElement('button');
+        btn.textContent = emoji;
+        btn.onclick = async (e) => {
+            e.stopPropagation();
+            await toggleReaction(messageId, emoji);
+            picker.remove();
+        };
+        picker.appendChild(btn);
+    });
+    
+    const rect = triggerElement.getBoundingClientRect();
+    picker.style.position = 'fixed';
+    picker.style.left = `${rect.left}px`;
+    picker.style.top = `${rect.top - 40}px`;
+    document.body.appendChild(picker);
+    
+    const closePicker = (e) => {
+        if (!picker.contains(e.target) && e.target !== triggerElement) {
+            picker.remove();
+            document.removeEventListener('click', closePicker);
+        }
+    };
+    setTimeout(() => document.addEventListener('click', closePicker), 100);
+}
+
+async function toggleReaction(messageId, emoji) {
+    try {
+        const { data: existing, error: fetchError } = await db
+            .from('geral_message_reactions')
+            .select('id')
+            .eq('message_id', messageId)
+            .eq('user_id', currentUser.id)
+            .eq('reaction', emoji)
+            .maybeSingle();
+        if (fetchError) throw fetchError;
+        
+        if (existing) {
+            await db.from('geral_message_reactions').delete().eq('id', existing.id);
+        } else {
+            await db.from('geral_message_reactions').insert({
+                message_id: messageId,
+                user_id: currentUser.id,
+                reaction: emoji
+            });
+        }
+        await loadMessageReactions(messageId);
+    } catch (e) {
+        showToast('Erro ao reagir: ' + e.message, 'error');
     }
 }
