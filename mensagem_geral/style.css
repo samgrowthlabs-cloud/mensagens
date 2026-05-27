@@ -1223,3 +1223,23 @@ body {
     color: #ef4444;
     font-size: 11px;
 }
+
+/* ========== INDICADOR DE ÚLTIMO VISTO ========== */
+.last-seen-indicator {
+    padding: 6px 16px;
+    border-top: 1px solid #1f1f1f;
+    font-size: 11px;
+    color: #6b6b6b;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #0d0d0d;
+    backdrop-filter: blur(4px);
+}
+.last-seen-icon {
+    font-size: 12px;
+    opacity: 0.7;
+}
+#lastSeenText {
+    flex: 1;
+}

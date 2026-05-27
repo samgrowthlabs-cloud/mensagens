@@ -69,7 +69,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Iniciar polling
     startPolling();
 
-        // Eventos
+    // Iniciar o indicador de último visto
+    startLastSeenUpdater();
+
+    // Eventos
     setupEventListeners();
 
     startOnlineCounter();
@@ -222,7 +225,7 @@ function createMessageDiv(msg) {
             const extraClass = isMentioningMe ? ' mention-self' : '';
             return `<span class="mention${extraClass}" data-username="${username}" onclick="showUserProfileByUsername('${username}')">@${username}</span>`;
         });
-        messageHtml = processedContent;
+        messageHtml = formatMessageText(processedContent);
     }
 
     const editedMark = msg.edited ? ' <span class="edited-mark">(editado)</span>' : '';
@@ -575,6 +578,9 @@ async function sendGeralMessage() {
             options: JSON.stringify(pollData.options),
             created_by: currentUser.id
         });
+
+        await updateLastSeen();
+
         
         renderMessage(msg);
         input.value = '';
@@ -614,6 +620,8 @@ async function sendGeralMessage() {
             renderMessage(msg);
             input.value = '';
             input.style.height = 'auto';
+
+            await updateLastSeen();
             
             // Notificar usuários mencionados (já serão notificados no polling, mas opcional aqui)
             for (const mentionedId of mentionIds) {
@@ -1296,6 +1304,18 @@ function setupRealtimeSubscriptions() {
             }
         )
         .subscribe();
+
+    // Canal para usuários (monitorar last_seen)
+    db.channel('users-changes')
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'users' }, (payload) => {
+        if (payload.new && payload.new.last_seen) {
+            // Se o usuário atualizado não for o próprio, recarrega o indicador
+            if (payload.new.id !== currentUser.id) {
+                fetchLastActiveUser();
+            }
+        }
+    })
+    .subscribe();
 }
 
 
@@ -1584,3 +1604,73 @@ window.togglePollResults = async function(pollId, button) {
         await updatePollTotal(pollId);
     }
 };
+
+
+//FORMATAR A PORRA DOS TEXTOS
+function formatMessageText(text) {
+    let formatted = escapeHtml(text);
+    formatted = formatted.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    formatted = formatted.replace(/\*(.*?)\*/g, '<em>$1</em>');
+    formatted = formatted.replace(/__(.*?)__/g, '<u>$1</u>');
+    formatted = formatted.replace(/~~(.*?)~~/g, '<del>$1</del>');
+    return formatted;
+}
+
+// Atualiza o timestamp de última atividade no banco
+async function updateLastSeen() {
+    if (!currentUser || !currentUser.id) return;
+    try {
+        await db.from('users').update({ last_seen: new Date().toISOString() }).eq('id', currentUser.id);
+    } catch (e) {
+        console.warn('Erro ao atualizar last_seen:', e);
+    }
+}
+
+function formatTimeAgo(date) {
+    if (!date) return 'agora mesmo';
+    const now = new Date();
+    const diffSeconds = Math.floor((now - new Date(date)) / 1000);
+    if (diffSeconds < 60) return 'agora mesmo';
+    const diffMinutes = Math.floor(diffSeconds / 60);
+    if (diffMinutes < 60) return `há ${diffMinutes} minuto${diffMinutes !== 1 ? 's' : ''}`;
+    const diffHours = Math.floor(diffMinutes / 60);
+    if (diffHours < 24) return `há ${diffHours} hora${diffHours !== 1 ? 's' : ''}`;
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays === 1) return 'ontem';
+    return `há ${diffDays} dias`;
+}
+
+
+async function fetchLastActiveUser() {
+    try {
+        // Busca o usuário mais recente (excluindo o atual) com last_seen não nulo
+        const { data, error } = await db
+            .from('users')
+            .select('username, role, last_seen')
+            .neq('id', currentUser.id)
+            .not('last_seen', 'is', null)
+            .order('last_seen', { ascending: false })
+            .limit(1);
+        if (error) throw error;
+        if (data && data.length > 0) {
+            const user = data[0];
+            const timeAgo = formatTimeAgo(user.last_seen);
+            document.getElementById('lastSeenText').innerHTML = `Última atividade: <strong style="color:${getRoleColor(user.role)}">${escapeHtml(user.username)}</strong> ${timeAgo}`;
+        } else {
+            document.getElementById('lastSeenText').innerHTML = 'Nenhuma atividade recente';
+        }
+    } catch (e) {
+        console.warn('Erro ao buscar último ativo:', e);
+        document.getElementById('lastSeenText').innerHTML = 'Não foi possível carregar';
+    }
+}
+
+// Função para atualizar o indicador periodicamente
+function startLastSeenUpdater() {
+    updateLastSeen(); // atualiza o próprio last_seen
+    fetchLastActiveUser(); // mostra o último ativo
+    setInterval(() => {
+        updateLastSeen();
+        fetchLastActiveUser();
+    }, 30000); // a cada 30 segundos
+}
