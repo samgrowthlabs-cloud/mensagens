@@ -17,6 +17,36 @@ let memeCommands = {};               // Será preenchido do banco
 
 
 
+function linkifyAndEscape(text) {
+    if (!text) return '';
+    
+    // Primeiro, identifica e marca as URLs com um placeholder único
+    const urlPattern = /(https?:\/\/[^\s<]+|www\.[^\s<]+)/gi;
+    const placeholders = [];
+    let processedText = text.replace(urlPattern, (url) => {
+        const id = `__URL_${placeholders.length}__`;
+        placeholders.push(url);
+        return id;
+    });
+    
+    // Agora escapa o HTML do texto restante
+    let escapedText = escapeHtml(processedText);
+    
+    // Restaura as URLs e as transforma em links seguros
+    placeholders.forEach((url, index) => {
+        const id = `__URL_${index}__`;
+        let cleanUrl = url.replace(/&amp;/g, '&'); // corrige &amp; se houver
+        let href = cleanUrl;
+        if (!href.startsWith('http')) {
+            href = 'https://' + href;
+        }
+        const link = `<a href="${href}" target="_blank" rel="noopener noreferrer" class="linkified">${cleanUrl}</a>`;
+        escapedText = escapedText.replace(id, link);
+    });
+    
+    return escapedText;
+}
+
 
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('🌐 Iniciando chat geral...');
@@ -141,22 +171,40 @@ function createMessageDiv(msg) {
     const user = allUsers[msg.user_id] || { username: 'Desconhecido', role: 'user', avatar_url: null };
     const isOwn = msg.user_id === currentUser.id;
 
-
-    // 🔥 MENSAGEM DO SISTEMA (por UUID ou flag)
+    // 🔥 MENSAGEM DO SISTEMA (sem escape HTML, para exibir aspas corretamente)
     const SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000000';
     if (msg.is_system || msg.user_id === SYSTEM_USER_ID || user.id === SYSTEM_USER_ID) {
         const div = document.createElement('div');
         div.className = 'geral-message geral-message-system';
         div.id = `msg-${msg.id}`;
+        
+        // Aplica formatação markdown diretamente, sem escapeHtml
+        const rawContent = msg.content;
+        let formattedContent = rawContent
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\*(.*?)\*/g, '<em>$1</em>')
+            .replace(/__(.*?)__/g, '<u>$1</u>')
+            .replace(/~~(.*?)~~/g, '<del>$1</del>');
+        
+        // Substitui quebras de linha por <br>
+        formattedContent = formattedContent.replace(/\n/g, '<br>');
+        
         div.innerHTML = `
             <div class="geral-message-avatar">🤖</div>
             <div class="geral-message-content">
-                <div class="geral-message-text">${formatMessageText(escapeHtml(msg.content))}</div>
+                <div class="geral-message-header">
+                    <span class="geral-message-username" style="color: #f59e0b;">🤖 Sistema</span>
+                    <span class="geral-message-time">${formatTime(msg.created_at)}</span>
+                </div>
+                <div class="geral-message-text">${formattedContent}</div>
             </div>
         `;
         return div;
     }
 
+    // ----------------------------------------------
+    // Restante da função (mensagens normais) – inalterado
+    // ----------------------------------------------
     const isCurrentAdmin = currentUser.role === 'admin';
     const isCurrentModerator = currentUser.role === 'moderator';
     const isCurrentSupervisor = currentUser.role === 'supervisor';
@@ -232,9 +280,12 @@ function createMessageDiv(msg) {
     const memeUrl = memeCommands[trimmedContent];
 
     if (memeUrl) {
-        messageHtml = `<img src="${memeUrl}" alt="meme" class="meme-gif" loading="lazy" onclick="window.open(this.src)">`;
+    messageHtml = `<img src="${memeUrl}" alt="meme" class="meme-gif" loading="lazy" onclick="window.open(this.src)">`;
     } else {
-        let processedContent = escapeHtml(msg.content);
+        // 1. Aplica linkify e gera tags <a> seguras
+        let processedContent = linkifyAndEscape(msg.content);
+        
+        // 2. Processar menções (@usuario) nas tags já existentes
         processedContent = processedContent.replace(/@([a-z0-9_]+)/gi, (match, username) => {
             const userExists = Object.values(allUsers).some(u => u.username.toLowerCase() === username.toLowerCase());
             if (!userExists) return match;
@@ -242,18 +293,19 @@ function createMessageDiv(msg) {
             const extraClass = isMentioningMe ? ' mention-self' : '';
             return `<span class="mention${extraClass}" data-username="${username}" onclick="showUserProfileByUsername('${username}')">@${username}</span>`;
         });
+        
+        // 3. Aplicar formatação markdown (negrito, itálico, sublinhado, riscado)
+        // ATENÇÃO: formatMessageText NÃO DEVE ESCAPAR HTML, apenas substituir padrões
         messageHtml = formatMessageText(processedContent);
     }
 
     const editedMark = msg.edited ? ' <span class="edited-mark">(editado)</span>' : '';
 
-    // Estrutura HTML com posicionamento correto
     div.innerHTML = `
         <div class="geral-message-avatar" onclick="showUserProfile('${user.id || msg.user_id}')">
             ${user.avatar_url ? `<img src="${escapeHtml(user.avatar_url)}">` : getInitials(user.username || 'U')}
         </div>
         <div class="geral-message-content" style="position: relative;">
-            <!-- Botão flutuante será inserido aqui via JS (fora do innerHTML) -->
             <div class="geral-message-header">
                 <span class="geral-message-username" style="color:${roleColor}" onclick="showUserProfile('${user.id || msg.user_id}')">${escapeHtml(user.username || 'Usuário')}</span>
                 ${user.role !== 'user' ? `<span class="geral-message-role" style="background:${roleColor}20;color:${roleColor}">${user.role}</span>` : ''}
@@ -262,7 +314,6 @@ function createMessageDiv(msg) {
             ${replyRefHTML}
             <div class="geral-message-text">${messageHtml}${editedMark}</div>
             
-            <!-- Container de reações (abaixo do texto, antes das ações) -->
             <div class="message-reactions" id="reactions-${msg.id}"></div>
             
             <div class="geral-message-footer">
@@ -276,12 +327,10 @@ function createMessageDiv(msg) {
         await renderPoll(msg.id, div.querySelector('.geral-message-text'));
     }, 100);
 
-    // Carregar reações existentes
     setTimeout(async () => {
         await loadMessageReactions(msg.id);
     }, 50);
 
-    // Criar e adicionar botão flutuante de reações (😊) no canto superior direito do conteúdo
     const contentDiv = div.querySelector('.geral-message-content');
     if (contentDiv) {
         const reactionsTrigger = document.createElement('div');
@@ -291,7 +340,6 @@ function createMessageDiv(msg) {
             e.stopPropagation();
             showReactionPicker(reactionsTrigger, msg.id);
         };
-        // Posiciona absoluto dentro do contentDiv (que tem position relative)
         contentDiv.appendChild(reactionsTrigger);
     }
 
@@ -608,8 +656,8 @@ async function sendGeralMessage() {
         }
     }
 
-    // Verificar comandos gerais primeiro
-    if (processGeneralCommands(content)) {
+    const isCommand = await processGeneralCommands(content);
+    if (isCommand) {
         input.value = '';
         input.style.height = 'auto';
         input.disabled = false;
@@ -1679,13 +1727,17 @@ window.togglePollResults = async function(pollId, button) {
 
 //FORMATAR A PORRA DOS TEXTOS
 function formatMessageText(text) {
-    let formatted = escapeHtml(text);
+    // text já pode conter tags HTML (ex: <a>)
+    let formatted = text;
     formatted = formatted.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
     formatted = formatted.replace(/\*(.*?)\*/g, '<em>$1</em>');
     formatted = formatted.replace(/__(.*?)__/g, '<u>$1</u>');
     formatted = formatted.replace(/~~(.*?)~~/g, '<del>$1</del>');
     return formatted;
 }
+
+
+
 
 // Atualiza o timestamp de última atividade no banco
 async function updateLastSeen() {
@@ -1749,7 +1801,8 @@ function startLastSeenUpdater() {
 
 
 // ========== COMANDOS GERAIS ==========
-function processGeneralCommands(content) {
+async function processGeneralCommands(content) {
+    console.log('processGeneralCommands chamado com:', content);
     const trimmed = content.trim().toLowerCase();
     const parts = trimmed.split(/\s+/);
     const cmd = parts[0];
@@ -1792,12 +1845,247 @@ function processGeneralCommands(content) {
         return true;
     }
 
+    if (cmd === '/ranking') {
+        await showRanking();
+        return true;
+    }
+
     // /8ball pergunta
     if (cmd === '/simounao') {
         // Reconstruir a pergunta (tudo após o comando)
         let question = content.substring(6).trim(); // remove "/8ball "
         if (!question) question = args.join(' ');
         cmd8ball(question);
+        return true;
+    }
+
+    // /choose opção1, opção2, opção3...
+    if (cmd === '/escolha') {
+        if (args.length < 2) {
+            sendSystemMessage(`❌ Use: /choose opção1, opção2, opção3...`);
+            return true;
+        }
+        // Junta os argumentos e divide por vírgulas
+        const raw = content.substring(8).trim(); // remove "/choose "
+        let options = raw.split(',').map(opt => opt.trim());
+        options = options.filter(opt => opt.length > 0);
+        if (options.length < 2) {
+            sendSystemMessage(`❌ Forneça pelo menos duas opções separadas por vírgula.`);
+            return true;
+        }
+        const chosen = options[Math.floor(Math.random() * options.length)];
+        sendSystemMessage(`🎲 ${currentUser.username} pediu para escolher entre: ${options.join(', ')}\n\n➡️ **${chosen}**`);
+        return true;
+    }
+
+
+
+    // /tweet "texto" - Com tweet estilizado (envia como sistema)
+
+    // /tweet "texto" - Card moderno com indicador "tweetou"
+    if (cmd === '/tweet') {
+        let tweetText = content.substring(6).trim();
+        if (!tweetText) {
+            sendSystemMessage(`❌ Use: /tweet sua mensagem aqui (até 280 caracteres)`);
+            return true;
+        }
+        if (tweetText.length > 280) {
+            sendSystemMessage(`❌ O tweet excede 280 caracteres (tem ${tweetText.length}).`);
+            return true;
+        }
+        const safeText = escapeHtml(tweetText).replace(/\n/g, '<br>');
+        const user = currentUser;
+        const avatarHtml = user.avatar_url 
+            ? `<img src="${escapeHtml(user.avatar_url)}" alt="${escapeHtml(user.username)}">`
+            : `<div class="avatar-placeholder">${getInitials(user.username)}</div>`;
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        const dateStr = now.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        
+        const tweetHtml = `
+            <div class="tweet-card">
+                <div class="tweet-avatar">${avatarHtml}</div>
+                <div class="tweet-content">
+                    <div class="tweet-header">
+                        <span class="tweet-name">${escapeHtml(user.username)}</span>
+                        <span class="tweet-username">@${escapeHtml(user.username)}</span>
+                        <span class="tweet-time">${timeStr} · ${dateStr}</span>
+                    </div>
+                    <div class="tweet-text">
+                        <strong style="color: #1da1f2;">${escapeHtml(user.username)} tweetou:</strong><br>
+                        ${safeText}
+                    </div>
+                    <div class="tweet-stats">
+                        <span>💬 0</span>
+                        <span>🔄 0</span>
+                        <span>❤️ 0</span>
+                        <span>📊 0</span>
+                    </div>
+                </div>
+            </div>
+        `;
+        sendSystemMessage(tweetHtml);
+        return true;
+    }
+
+
+
+    // /give @usuario [item] - Card com presente clicável
+    if (cmd === '/give') {
+        if (args.length < 2) {
+            sendSystemMessage(`❌ Use: /give @usuario [item]`);
+            return true;
+        }
+        const targetUsername = args[0].replace(/^@/, '');
+        const targetUser = Object.values(allUsers).find(u => u.username.toLowerCase() === targetUsername);
+        if (!targetUser) {
+            sendSystemMessage(`❌ Usuário "${targetUsername}" não encontrado.`);
+            return true;
+        }
+        const item = args.slice(1).join(' ');
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        
+        // Adiciona um ID único para o presente (opcional)
+        const presentId = 'present-' + Date.now() + '-' + Math.random().toString(36).substr(2, 6);
+        
+        const giveHtml = `
+            <div class="give-card" data-present-id="${presentId}">
+                <div class="give-icon">🎁</div>
+                <div class="give-info">
+                    <div class="give-de-para">
+                        <span>📤 De: <strong class="give-giver">${escapeHtml(currentUser.username)}</strong></span>
+                        <span>📥 Para: <strong class="give-receiver">${escapeHtml(targetUser.username)}</strong></span>
+                    </div>
+                    <div class="give-item clickable-present" data-giver="${escapeHtml(currentUser.username)}" data-receiver="${escapeHtml(targetUser.username)}" data-item="${escapeHtml(item)}">
+                        ${escapeHtml(item)}
+                    </div>
+                    <div class="give-time">${timeStr}</div>
+                </div>
+            </div>
+        `;
+        sendSystemMessage(giveHtml);
+        
+        // Após inserir no DOM (como sendSystemMessage é assíncrona, precisamos anexar o evento depois)
+        setTimeout(() => {
+            document.querySelectorAll('.clickable-present').forEach(el => {
+                if (!el.hasAttribute('data-listener')) {
+                    el.setAttribute('data-listener', 'true');
+                    el.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const giver = el.getAttribute('data-giver');
+                        const receiver = el.getAttribute('data-receiver');
+                        const item = el.getAttribute('data-item');
+                        openPresentModal(item, giver, receiver);
+                    });
+                }
+            });
+        }, 200);
+        return true;
+    }
+
+
+    // /vote "pergunta" - Enquete Sim/Não
+    if (cmd === '/vote') {
+        const voteMatch = content.match(/"([^"]*)"/);
+        if (!voteMatch || !voteMatch[1]) {
+            sendSystemMessage(`❌ Use: /vote "sua pergunta aqui"`);
+            return true;
+        }
+        const question = voteMatch[1];
+        
+        // Cria a mensagem que vai conter a enquete
+        const messageData = {
+            user_id: currentUser.id,
+            content: `📊 Votação: ${question}`,
+            mentions: []
+        };
+        const { data: msg, error } = await db
+            .from('geral_messages')
+            .insert(messageData)
+            .select()
+            .single();
+        if (error) {
+            showToast('Erro ao criar enquete', 'error');
+            return true;
+        }
+        
+        // Cria o poll com opções Sim/Não
+        await db.from('geral_polls').insert({
+            message_id: msg.id,
+            question: question,
+            options: JSON.stringify(['👍 Sim', '👎 Não']),
+            created_by: currentUser.id,
+            is_active: true
+        });
+        
+        renderMessage(msg);
+        return true;
+    }
+
+    // /clear_sys - Apagar mensagens do robô (apenas admin/supervisor)
+    if (cmd === '/clear_sys') {
+        // 1. Verificar cargo real no banco
+        const { data: userData, error: userError } = await db
+            .from('users')
+            .select('role')
+            .eq('id', currentUser.id)
+            .single();
+        if (userError || !userData || !['admin', 'supervisor'].includes(userData.role)) {
+            sendSystemMessage(`❌ Apenas administradores e supervisores podem usar este comando.`);
+            return true;
+        }
+        const SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000000';
+        const confirmDelete = confirm('⚠️ ATENÇÃO: Isso apagará TODAS as mensagens do robô (sistema) permanentemente. Deseja continuar?');
+        if (!confirmDelete) return true;
+        try {
+            const { error } = await db
+                .from('geral_messages')
+                .delete()
+                .eq('user_id', SYSTEM_USER_ID);
+            if (error) throw error;
+            sendSystemMessage(`🧹 Foram apagadas todas as mensagens do robô.`);
+            await loadGeralMessages();
+        } catch (e) {
+            sendSystemMessage(`❌ Erro ao limpar mensagens do robô: ${e.message}`);
+        }
+        return true;
+    }
+
+    // /clear - Apagar todo o chat geral (apenas admin/supervisor)
+    if (cmd === '/clear') {
+        // 1. Verificar cargo real no banco
+        const { data: userData, error: userError } = await db
+            .from('users')
+            .select('role')
+            .eq('id', currentUser.id)
+            .single();
+        if (userError || !userData || !['admin', 'supervisor'].includes(userData.role)) {
+            sendSystemMessage(`❌ Apenas administradores e supervisores podem usar este comando.`);
+            return true;
+        }
+        const confirmDelete = confirm('⚠️ ATENÇÃO: Isso apagará TODAS as mensagens do chat geral (incluindo mensagens de usuários). Deseja continuar?');
+        if (!confirmDelete) return true;
+        try {
+            const { error } = await db
+                .from('geral_messages')
+                .delete()
+                .neq('id', '00000000-0000-0000-0000-000000000000'); // apaga tudo
+            if (error) throw error;
+            sendSystemMessage(`🧹 O chat geral foi completamente limpo.`);
+            await loadGeralMessages();
+        } catch (e) {
+            sendSystemMessage(`❌ Erro ao limpar o chat geral: ${e.message}`);
+        }
+        return true;
+    }
+
+    if (cmd === '/rankingsend') {
+        if (!['admin', 'supervisor'].includes(currentUser.role)) {
+            sendSystemMessage(`❌ Apenas administradores e supervisores podem usar este comando.`);
+            return true;
+        }
+        await sendRankingToChat();
         return true;
     }
 
@@ -1834,32 +2122,193 @@ async function sendSystemMessage(text) {
 
 // ========== COMANDOS LÚDICOS ==========
 function cmdHelp() {
-    const helpMessage = `
-📖 **COMANDOS DISPONÍVEIS**
-
-━━━━━━━━━━━━━━━━━━━━━━━━━
-**👤 PERFIL**
-/avatar [@usuario] – Ver perfil (seu ou de outro)
-━━━━━━━━━━━━━━━━━━━━━━━━━
-**🎲 DIVERSÃO**
-/dado [lados] – Rola um dado (padrão 6 lados)
-/caracoroa – Cara ou coroa
-/simounao "pergunta" – Resposta mágica (Sim/Não/Quem sabe...)
-━━━━━━━━━━━━━━━━━━━━━━━━━
-**📊 ENQUETES**
-/sondagem "Pergunta" "Op1" "Op2" ["Op3"...] – Cria enquete interativa
-━━━━━━━━━━━━━━━━━━━━━━━━━
-**ℹ️ INFORMAÇÃO**
-/hora – Data/hora atual
-/ajuda – Exibe esta ajuda
-━━━━━━━━━━━━━━━━━━━━━━━━━
-**🎬 MEMES/GIFS**
-/gif nome – Envia um GIF ou meme cadastrado (ex: /gif meme01)
-━━━━━━━━━━━━━━━━━━━━━━━━━
-
-✨ *Dica: você também pode usar formatação como **negrito**, *itálico*, __sublinhado__ e ~~riscado~~ nas mensagens!*
+    const helpHtml = `
+        <div id="helpModal" class="modal-overlay" style="display:flex;">
+            <div class="help-modal">
+                <div class="help-header">
+                    <h2>📖 Comandos Disponíveis</h2>
+                    <button class="help-close" onclick="closeHelpModal()">✕</button>
+                </div>
+                <div class="help-content">
+                    <div class="help-category">
+                        <div class="help-cat-title">👤 Perfil</div>
+                        <div class="help-cmd"><span class="cmd">/avatar [@usuario]</span> – Ver perfil (seu ou de outro)</div>
+                    </div>
+                    <div class="help-category">
+                        <div class="help-cat-title">🎲 Diversão</div>
+                        <div class="help-cmd"><span class="cmd">/dado [lados]</span> – Rola um dado (padrão 6)</div>
+                        <div class="help-cmd"><span class="cmd">/caracoroa</span> – Cara ou coroa</div>
+                        <div class="help-cmd"><span class="cmd">/simounao "pergunta"</span> – Resposta mágica</div>
+                        <div class="help-cmd"><span class="cmd">/escolha op1, op2, ...</span> – Escolhe aleatoriamente</div>
+                        <div class="help-cmd"><span class="cmd">/tweet "texto"</span> – Publica um tweet estilizado</div>
+                        <div class="help-cmd"><span class="cmd">/give @usuario [item]</span> – Dá um presente (clique no item!)</div>
+                    </div>
+                    <div class="help-category">
+                        <div class="help-cat-title">📊 Enquetes</div>
+                        <div class="help-cmd"><span class="cmd">/sondagem "Pergunta" "Op1" "Op2" [...]</span> – Enquete com várias opções</div>
+                        <div class="help-cmd"><span class="cmd">/vote "Pergunta"</span> – Enquete Sim/Não</div>
+                    </div>
+                    <div class="help-category">
+                        <div class="help-cat-title">🎬 Memes/GIFs</div>
+                        <div class="help-cmd"><span class="cmd">/gif nome</span> – Envia GIF cadastrado (ex: /gif meme01)</div>
+                    </div>
+                    <div class="help-category">
+                        <div class="help-cat-title">🏆 Informação</div>
+                        <div class="help-cmd"><span class="cmd">/hora</span> – Data/hora atual</div>
+                        <div class="help-cmd"><span class="cmd">/ranking</span> – Top 10 mensagens da semana</div>
+                    </div>
+                    <div class="help-category">
+                        <div class="help-cat-title">🛡️ Moderação (admin/supervisor)</div>
+                        <div class="help-cmd"><span class="cmd">/clear_sys</span> – Apaga mensagens do robô</div>
+                        <div class="help-cmd"><span class="cmd">/clear</span> – Apaga TODO o chat (cuidado!)</div>
+                    </div>
+                    <div class="help-category">
+                        <div class="help-cat-title">✨ Formatação</div>
+                        <div class="help-cmd"><span class="cmd">**negrito**</span> <span class="cmd">*itálico*</span> <span class="cmd">__sublinhado__</span> <span class="cmd">~~riscado~~</span></div>
+                        <div class="help-cmd">Links são automaticamente azuis e clicáveis 🔗</div>
+                    </div>
+                </div>
+                <div class="help-footer">
+                    <button class="help-close-btn" onclick="closeHelpModal()">Fechar</button>
+                </div>
+            </div>
+        </div>
     `;
-    sendSystemMessage(helpMessage);
+    // Remove modal existente
+    const existing = document.getElementById('helpModal');
+    if (existing) existing.remove();
+    document.body.insertAdjacentHTML('beforeend', helpHtml);
+    // Fechar ao clicar fora do modal
+    const modal = document.getElementById('helpModal');
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeHelpModal();
+    });
+}
+
+function closeHelpModal() {
+    const modal = document.getElementById('helpModal');
+    if (modal) modal.remove();
+}
+
+
+
+
+// ========== RANKING SEMANAL ==========
+async function showRanking() {
+    try {
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+        // Buscar todas as mensagens da última semana
+        const { data: messages, error } = await db
+            .from('geral_messages')
+            .select('user_id')
+            .gte('created_at', sevenDaysAgo.toISOString());
+        if (error) throw error;
+
+        // Contar mensagens por usuário
+        const counts = {};
+        messages.forEach(msg => {
+            counts[msg.user_id] = (counts[msg.user_id] || 0) + 1;
+        });
+
+        // Ordenar e pegar top 10
+        let ranking = Object.entries(counts).map(([userId, count]) => ({ userId, count }));
+        ranking.sort((a, b) => b.count - a.count);
+        ranking = ranking.slice(0, 10);
+
+        if (ranking.length === 0) {
+            sendSystemMessage('📊 Nenhuma mensagem enviada na última semana.');
+            return;
+        }
+
+        // Buscar dados dos usuários
+        const userIds = ranking.map(r => r.userId);
+        const { data: users, error: usersError } = await db
+            .from('users')
+            .select('id, username, role, avatar_url')
+            .in('id', userIds);
+        if (usersError) throw usersError;
+        const userMap = {};
+        users.forEach(u => { userMap[u.id] = u; });
+
+        // Montar HTML do modal
+        let rankingHtml = `
+            <div id="rankingModal" class="modal-overlay" style="display:flex;">
+                <div class="ranking-modal">
+                    <div class="ranking-header">
+                        <h2>🏆 Ranking Semanal</h2>
+                        <button class="ranking-close" onclick="closeRankingModal()">✕</button>
+                    </div>
+                    <div class="ranking-list">
+        `;
+
+        ranking.forEach((item, index) => {
+            const user = userMap[item.userId];
+            if (!user) return;
+            const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index+1}º`;
+            const avatarHtml = user.avatar_url 
+                ? `<img src="${escapeHtml(user.avatar_url)}">`
+                : `<span>${getInitials(user.username)}</span>`;
+            rankingHtml += `
+                <div class="ranking-item">
+                    <div class="ranking-position">${medal}</div>
+                    <div class="ranking-avatar">${avatarHtml}</div>
+                    <div class="ranking-info">
+                        <div class="ranking-username" style="color:${getRoleColor(user.role)}">${escapeHtml(user.username)}</div>
+                        <div class="ranking-count">${item.count} mensagem${item.count !== 1 ? 's' : ''}</div>
+                    </div>
+                </div>
+            `;
+        });
+
+        rankingHtml += `
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Remover modal existente
+        const existing = document.getElementById('rankingModal');
+        if (existing) existing.remove();
+        document.body.insertAdjacentHTML('beforeend', rankingHtml);
+
+        // Fechar ao clicar fora
+        const modal = document.getElementById('rankingModal');
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeRankingModal();
+        });
+    } catch (e) {
+        console.error(e);
+        sendSystemMessage('❌ Erro ao carregar ranking.');
+    }
+}
+
+async function sendRankingToChat() {
+    try {
+        const rankingData = await getRankingData();
+        if (!rankingData) {
+            sendSystemMessage('📊 Nenhuma mensagem enviada na última semana.');
+            return;
+        }
+        const { ranking, userMap } = rankingData;
+        let message = '🏆 **Ranking Semanal de Mensagens** 🏆\n\n';
+        ranking.forEach((item, index) => {
+            const user = userMap[item.userId];
+            if (!user) return;
+            const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index+1}º`;
+            message += `${medal} **${user.username}** – ${item.count} mensagem${item.count !== 1 ? 's' : ''}\n`;
+        });
+        sendSystemMessage(message);
+    } catch (e) {
+        console.error(e);
+        sendSystemMessage('❌ Erro ao carregar ranking.');
+    }
+}
+
+function closeRankingModal() {
+    const modal = document.getElementById('rankingModal');
+    if (modal) modal.remove();
 }
 
 function cmdTime() {
@@ -1899,4 +2348,55 @@ function cmd8ball(question) {
     ];
     const answer = responses[Math.floor(Math.random() * responses.length)];
     sendSystemMessage(`🎱 ${currentUser.username} perguntou: "${question}"\nResposta: **${answer}**`);
+}
+
+
+
+function openPresentModal(item, giver, receiver) {
+    const modal = document.getElementById('presentModal');
+    const giftContent = document.getElementById('presentGiftContent');
+    const messageEl = document.getElementById('presentMessage');
+    
+    giftContent.innerHTML = escapeHtml(item);
+    messageEl.innerHTML = `${escapeHtml(giver)} deu um presente para ${escapeHtml(receiver)}!<br><span style="font-size:14px; color:#f97316;">Clique fora ou no X para fechar</span>`;
+    
+    modal.style.display = 'flex';
+}
+
+function closePresentModal() {
+    document.getElementById('presentModal').style.display = 'none';
+}
+
+// Fechar ao clicar fora do modal
+document.getElementById('presentModal')?.addEventListener('click', (e) => {
+    if (e.target === document.getElementById('presentModal')) {
+        closePresentModal();
+    }
+});
+
+
+
+async function getRankingData() {
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const { data: messages, error } = await db
+        .from('geral_messages')
+        .select('user_id')
+        .gte('created_at', sevenDaysAgo.toISOString());
+    if (error) throw error;
+    const counts = {};
+    messages.forEach(msg => { counts[msg.user_id] = (counts[msg.user_id] || 0) + 1; });
+    let ranking = Object.entries(counts).map(([userId, count]) => ({ userId, count }));
+    ranking.sort((a, b) => b.count - a.count);
+    ranking = ranking.slice(0, 10);
+    if (ranking.length === 0) return null;
+    const userIds = ranking.map(r => r.userId);
+    const { data: users, error: usersError } = await db
+        .from('users')
+        .select('id, username, role, avatar_url')
+        .in('id', userIds);
+    if (usersError) throw usersError;
+    const userMap = {};
+    users.forEach(u => { userMap[u.id] = u; });
+    return { ranking, userMap };
 }

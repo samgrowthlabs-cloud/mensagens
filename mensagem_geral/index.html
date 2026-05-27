@@ -95,5 +95,17 @@
   <script src="../js/database.js"></script>
   <script src="../js/session.js"></script>
   <script src="script.js"></script>
+
+  <!-- Modal do presente (inicialmente oculto) -->
+  <div id="presentModal" class="modal-overlay" style="display:none;">
+      <div class="present-modal">
+          <button class="present-close" onclick="closePresentModal()">✕</button>
+          <div class="present-box">
+              <div class="present-icon">🎁</div>
+              <div class="present-gift" id="presentGiftContent"></div>
+              <div class="present-message" id="presentMessage"></div>
+          </div>
+      </div>
+  </div>
 </body>
 </html>
