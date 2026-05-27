@@ -6,6 +6,12 @@ let allUsers = {};
 let replyToMessage = null; // { id, username, content }
 const REACTIONS = ['😂', '😡', '👍', '👎', '❤️', '💰'];
 let latestAnnouncementId = null;
+let announcementRealtimeChannel = null;
+let memeCommands = {};               // Será preenchido do banco
+
+
+
+
 
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('🌐 Iniciando chat geral...');
@@ -44,14 +50,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Carregar usuários para cache
     await loadAllUsers();
-    
+
+    // Carregar comandos de meme ANTES das mensagens
+    await loadMemeCommands();
+
     // Carregar mensagens
     await loadGeralMessages();
-    
+
     // Iniciar polling
     startPolling();
     
-    // Eventos
+        // Eventos
     setupEventListeners();
 
     startAnnouncementCheck();
@@ -121,32 +130,24 @@ function renderMessage(msg, prepend = false) {
     const isAuthorAdmin = user.role === 'admin';
     const isAuthorModerator = user.role === 'moderator';
     
-    
     // Determinar permissões de edição/exclusão
     let canEdit = false;
     let canDelete = false;
 
-
     if (isCurrentAdmin) {
-    // Admin pode editar/excluir qualquer mensagem (exceto já editada, se for o caso)
-    canEdit = !msg.deleted && (!msg.edited || isMessageEditable(msg.created_at));
-    canDelete = !msg.deleted;
+        canEdit = !msg.deleted && (!msg.edited || isMessageEditable(msg.created_at));
+        canDelete = !msg.deleted;
     } else if (isCurrentSupervisor) {
-        // Supervisor pode editar/excluir mensagens de usuários comuns e as próprias
-        // Não pode editar/excluir mensagens de admins ou moderadores
         if (user.role === 'user' || isOwn) {
             canEdit = !msg.deleted && (!msg.edited || isMessageEditable(msg.created_at));
             canDelete = !msg.deleted;
         }
     } else if (isCurrentModerator) {
-        // Moderador pode editar/excluir mensagens de usuários comuns e as próprias
-        // Não pode editar/excluir mensagens de admins
         if (user.role === 'user' || isOwn) {
             canEdit = !msg.deleted && (!msg.edited || isMessageEditable(msg.created_at));
             canDelete = !msg.deleted;
         }
     } else {
-        // Usuário comum: só as próprias mensagens
         if (isOwn) {
             canEdit = !msg.deleted && (!msg.edited || isMessageEditable(msg.created_at));
             canDelete = !msg.deleted;
@@ -160,7 +161,7 @@ function renderMessage(msg, prepend = false) {
     div.id = `msg-${msg.id}`;
     div.dataset.messageId = msg.id;
     
-    // Se a mensagem foi deletada (soft delete), mostrar diferente
+    // Se a mensagem foi deletada (soft delete)
     if (msg.deleted) {
         div.innerHTML = `
             <div class="geral-message-avatar"><span>🗑️</span></div>
@@ -189,7 +190,7 @@ function renderMessage(msg, prepend = false) {
         `;
     }
     
-    // Botões de ação (editar/excluir) – apenas se tiver permissão
+    // Botões de ação (editar/excluir)
     let actionsHTML = '';
     if (canEdit || canDelete) {
         actionsHTML = `<div class="geral-message-actions">`;
@@ -202,7 +203,19 @@ function renderMessage(msg, prepend = false) {
         actionsHTML += `</div>`;
     }
     
-    // Texto da mensagem com marcação de edição
+    // 🔥 CONVERSÃO DE COMANDO DE MEME 🔥
+    let messageHtml = '';
+    const trimmedContent = msg.content.trim();
+    const memeUrl = memeCommands[trimmedContent];
+    
+    if (memeUrl) {
+        // É um comando de meme – exibe o GIF/WebP
+        messageHtml = `<img src="${memeUrl}" alt="meme" class="meme-gif" loading="lazy" onclick="window.open(this.src)">`;
+    } else {
+        // Texto normal
+        messageHtml = escapeHtml(msg.content);
+    }
+    
     const editedMark = msg.edited ? ' <span class="edited-mark">(editado)</span>' : '';
     
     div.innerHTML = `
@@ -216,7 +229,7 @@ function renderMessage(msg, prepend = false) {
                 <span class="geral-message-time">${formatTime(msg.created_at)}</span>
             </div>
             ${replyRefHTML}
-            <div class="geral-message-text">${escapeHtml(msg.content)}${editedMark}</div>
+            <div class="geral-message-text">${messageHtml}${editedMark}</div>
             <div class="geral-message-footer">
                 <button class="geral-message-reply-btn" onclick="event.stopPropagation(); replyTo('${msg.id}', '${escapeHtml(user.username).replace(/'/g, "\\'")}', '${escapeHtml(msg.content).replace(/'/g, "\\'")}')">↩ Responder</button>
                 ${actionsHTML}
@@ -877,7 +890,7 @@ async function toggleAnnouncementReaction(announcementId, emoji) {
 async function dismissAnnouncement(announcementId) {
     try {
         await db.from('announcement_views').insert({
-            user_id: currentUserId,
+            user_id: currentUser.id,        // <-- CORREÇÃO: use currentUser.id
             announcement_id: announcementId,
             viewed_at: new Date().toISOString()
         });
@@ -896,4 +909,21 @@ async function dismissAnnouncement(announcementId) {
 function startAnnouncementCheck() {
     checkAnnouncements();
     setInterval(checkAnnouncements, 30000);
+}
+
+
+async function loadMemeCommands() {
+    try {
+        const { data, error } = await db
+            .from('meme_commands')
+            .select('command, url');
+        if (error) throw error;
+        memeCommands = {};
+        (data || []).forEach(cmd => {
+            memeCommands['/' + cmd.command] = cmd.url;   // "/meme01" -> url
+        });
+        console.log(`📦 ${Object.keys(memeCommands).length} comandos de meme carregados`);
+    } catch (e) {
+        console.warn('Erro ao carregar comandos de meme:', e);
+    }
 }

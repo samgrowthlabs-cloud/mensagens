@@ -8,6 +8,222 @@ let filteredUsers = [];
 let statsInterval = null;
 let reactionsPollInterval = null; // polling das reações dos anúncios
 
+
+
+const actionLabels = {
+    'LOGIN': '🔑 Login',
+    'LOGOUT': '🚪 Logout',
+    'PASSWORD_CHANGED': '🔒 Alterou própria senha',
+    'USER_CREATED': '✨ Usuário criado',
+    'USER_UPDATED': '✏️ Usuário editado',
+    'USER_BANNED': '🚫 Usuário banido',
+    'USER_UNBANNED': '✅ Usuário desbanido',
+    'USER_DELETED': '🗑️ Usuário excluído',
+    'PASSWORD_RESET': '🔑 Senha resetada',
+    'POLL_CREATED': '📊 Enquete criada',
+    'POLL_ENDED': '🔚 Enquete encerrada',
+    'POLL_DELETED': '🗑️ Enquete excluída',
+    'ANNOUNCEMENT_CREATED': '📢 Anúncio criado',
+    'ANNOUNCEMENT_DELETED': '🗑️ Anúncio excluído',
+    'MEME_COMMAND_CREATED': '🎬 Comando de meme criado',
+    'MEME_COMMAND_UPDATED': '✏️ Comando de meme editado',
+    'MEME_COMMAND_DELETED': '🗑️ Comando de meme excluído',
+    'CLEAN_OLD_GERAL_MESSAGES': '🧹 Mensagens antigas apagadas',
+    'MASS_DELETE_USERS': '⚠️ Exclusão em massa de usuários',
+    'MASS_DELETE_PRIVATE_MSGS': '💬 Mensagens privadas em massa',
+    'MASS_DELETE_GERAL_MSGS': '🌐 Mensagens gerais em massa',
+    'MASS_DELETE_ALL_MSGS': '🔥 Todas as mensagens apagadas',
+    'MASS_ROLE_CHANGE': '👥 Cargo em massa alterado',
+    'RATE_LIMIT_SETTINGS_CHANGED': '⏱️ Configurações de spam alteradas'
+};
+
+
+// ========== GERENCIAMENTO DE MEMES ==========
+let allMemes = [];
+
+async function loadMemes() {
+    const tbody = document.getElementById('memesTableBody');
+    if (!tbody) return;
+    try {
+        const { data, error } = await db
+            .from('meme_commands')
+            .select('*')
+            .order('command', { ascending: true });
+        if (error) throw error;
+        allMemes = data || [];
+        if (allMemes.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;">Nenhum comando cadastrado</td></tr>';
+            return;
+        }
+        tbody.innerHTML = allMemes.map(meme => `
+            <tr style="vertical-align: middle;">
+                <td style="padding: 12px 8px;"><strong>/${escapeHtml(meme.command)}</strong></td>
+                <td style="padding: 12px 8px; word-break: break-all;">
+                    <a href="${escapeHtml(meme.url)}" target="_blank" style="color:#8b5cf6;">Ver GIF</a>
+                </td>
+                <td style="padding: 8px; text-align: center; white-space: nowrap;">
+                    <button class="btn-action" onclick="editMeme('${meme.id}')" style="margin-right: 8px;">✏️ Editar</button>
+                    <button class="btn-action danger" onclick="deleteMeme('${meme.id}')">🗑️ Excluir</button>
+                </td>
+            </tr>
+        `).join('');
+    } catch (e) {
+        tbody.innerHTML = '<tr><td colspan="3" style="color:red;">Erro ao carregar</td></tr>';
+    }
+}
+
+
+async function cleanOldGeralMessages() {
+    // Verifica se o usuário atual é admin ou supervisor
+    const user = sessionManager.getCurrentUser();
+    if (!user || (user.role !== 'admin' && user.role !== 'supervisor')) {
+        showToast('Apenas administradores e supervisores podem realizar esta ação', 'error');
+        return;
+    }
+
+    if (!confirm('Apagar todas as mensagens do chat geral com mais de 7 dias?')) return;
+    try {
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        const { error } = await db
+            .from('geral_messages')
+            .delete()
+            .lt('created_at', sevenDaysAgo.toISOString());
+        await logAdminAction('CLEAN_OLD_GERAL_MESSAGES', { days: 7 });
+        if (error) throw error;
+        showToast(`Mensagens antigas removidas com sucesso`, 'success');
+        await loadActivityLogs();
+    } catch (e) {
+        showToast('Erro ao limpar mensagens: ' + e.message, 'error');
+    }
+}
+
+function showCreateMemeModal() {
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.innerHTML = `
+    <div class="modal" style="max-width:500px;">
+      <h2 class="modal-title">🎬 Novo Comando de Meme</h2>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Comando (sem a barra)</label>
+          <input type="text" id="memeCommand" class="form-input" placeholder="ex: meme01">
+          <small>O usuário digitará <strong>/meme01</strong> no chat</small>
+        </div>
+        <div class="form-group">
+          <label>URL do GIF/WebP</label>
+          <input type="url" id="memeUrl" class="form-input" placeholder="https://...">
+        </div>
+        <div id="memePreview" style="margin-top:12px;"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-cancel" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
+        <button class="btn-save" id="saveMemeBtn">Salvar</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  
+  const urlInput = document.getElementById('memeUrl');
+  const previewDiv = document.getElementById('memePreview');
+  urlInput.addEventListener('input', () => {
+    const url = urlInput.value.trim();
+    previewDiv.innerHTML = url ? `<img src="${escapeHtml(url)}" style="max-width:100px; border-radius:8px;">` : '';
+  });
+  
+  document.getElementById('saveMemeBtn').onclick = async () => {
+    const command = document.getElementById('memeCommand').value.trim().toLowerCase();
+    const url = document.getElementById('memeUrl').value.trim();
+    if (!command || !url) {
+      showToast('Preencha ambos os campos', 'error');
+      return;
+    }
+    if (!/^[a-z0-9_]+$/.test(command)) {
+      showToast('Comando inválido (use apenas letras minúsculas, números e _)', 'error');
+      return;
+    }
+    try {
+      await db.from('meme_commands').insert({ command, url });
+      await logAdminAction('MEME_COMMAND_CREATED', { command });
+      showToast('Comando criado!', 'success');
+      await loadActivityLogs();
+      modal.remove();
+      loadMemes();
+    } catch (e) {
+      showToast('Erro: ' + e.message, 'error');
+    }
+  };
+}
+
+async function editMeme(id) {
+  const meme = allMemes.find(m => m.id === id);
+  if (!meme) return;
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.innerHTML = `
+    <div class="modal" style="max-width:500px;">
+      <h2 class="modal-title">✏️ Editar Comando</h2>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Comando (sem a barra)</label>
+          <input type="text" id="editCommand" class="form-input" value="${escapeHtml(meme.command)}">
+        </div>
+        <div class="form-group">
+          <label>URL do GIF/WebP</label>
+          <input type="url" id="editUrl" class="form-input" value="${escapeHtml(meme.url)}">
+        </div>
+        <div id="editPreview"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-cancel" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
+        <button class="btn-save" id="updateMemeBtn">Atualizar</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  
+  const previewDiv = document.getElementById('editPreview');
+  const urlInput = document.getElementById('editUrl');
+  const updatePreview = () => {
+    const url = urlInput.value.trim();
+    previewDiv.innerHTML = url ? `<img src="${escapeHtml(url)}" style="max-width:100px; border-radius:8px;">` : '';
+  };
+  urlInput.addEventListener('input', updatePreview);
+  updatePreview();
+  
+  document.getElementById('updateMemeBtn').onclick = async () => {
+    const command = document.getElementById('editCommand').value.trim().toLowerCase();
+    const url = document.getElementById('editUrl').value.trim();
+    if (!command || !url) {
+      showToast('Preencha ambos os campos', 'error');
+      return;
+    }
+    try {
+      await db.from('meme_commands').update({ command, url, updated_at: new Date() }).eq('id', id);
+      await logAdminAction('MEME_COMMAND_UPDATED', { command, id });
+      showToast('Comando atualizado', 'success');
+      await loadActivityLogs();
+      modal.remove();
+      loadMemes();
+    } catch (e) {
+      showToast('Erro: ' + e.message, 'error');
+    }
+  };
+}
+
+async function deleteMeme(id) {
+  if (!confirm('Excluir este comando permanentemente?')) return;
+  try {
+    await db.from('meme_commands').delete().eq('id', id);
+    await logAdminAction('MEME_COMMAND_DELETED', { command, id });
+    showToast('Comando excluído', 'success');
+    await loadActivityLogs();
+    loadMemes();
+  } catch (e) {
+    showToast('Erro ao excluir', 'error');
+  }
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
     // Verificar autenticação
     if (!sessionManager.isAuthenticated()) {
@@ -50,7 +266,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     currentUserRole = user.role;
     currentUserId = user.id;
-    
+
+    // Mostrar seção de memes apenas para admin e supervisor
+    if (currentUserRole === 'admin' || currentUserRole === 'supervisor') {
+    const memesSection = document.getElementById('memesSection');
+    if (memesSection) memesSection.style.display = 'block';
+    loadMemes(); // carregar a tabela
+    }
+        
     // Ajustar interface conforme o cargo
     setupUIByRole(user);
     
@@ -373,7 +596,10 @@ async function createUser() {
     if (!validateUsername(username)) { showToast('Username inválido (3-30 caracteres, apenas letras, números e _)', 'error'); return; }
     try {
         await databaseManager.createUser({ username, email, password, role });
+        await logAdminAction('USER_CREATED', { username, email, role });
         showToast('Usuário criado com sucesso', 'success');
+        // Dentro de createUser, logo após showToast
+        await loadActivityLogs();
         closeCreateUserModal();
         await loadUsers();
         await databaseManager.logActivity(currentUserId, 'USER_CREATED', { username, email });
@@ -441,11 +667,19 @@ async function saveUserEdit() {
         }
 
         await databaseManager.updateUser(editingUserId, updates);
+        await logAdminAction('USER_UPDATED', { 
+            user_id: editingUserId, 
+            target_username: targetUser.username,
+            updates 
+        });
         if (newPassword) {
             await databaseManager.updateUser(editingUserId, { password: newPassword });
             showToast('Senha resetada com sucesso', 'success');
         }
         showToast('Usuário atualizado', 'success');
+        await loadActivityLogs();
+        // Dentro de createUser, logo após showToast
+        await loadActivityLogs();
         closeEditUserModal();
         await loadUsers();
     } catch (error) {
@@ -456,18 +690,42 @@ async function saveUserEdit() {
 async function toggleBanUser(userId, ban) {
     const target = allUsers.find(u => u.id === userId);
     if (!target) return;
-    if (currentUserRole === 'moderator' && target.role !== 'user') { showToast('Você só pode banir/desbanir usuários comuns', 'error'); return; }
-    if (currentUserRole === 'supervisor' && (target.role === 'admin' || target.role === 'supervisor')) {showToast('Você não pode banir administradores ou supervisores', 'error');return;}
-    if (currentUserRole === 'admin' && target.role === 'admin') { showToast('Não é possível banir um administrador', 'error'); return; }
+
+    // Validações de permissão por cargo
+    if (currentUserRole === 'moderator' && target.role !== 'user') {
+        showToast('Você só pode banir/desbanir usuários comuns', 'error');
+        return;
+    }
+    if (currentUserRole === 'supervisor' && (target.role === 'admin' || target.role === 'supervisor')) {
+        showToast('Você não pode banir administradores ou supervisores', 'error');
+        return;
+    }
+    if (currentUserRole === 'admin' && target.role === 'admin') {
+        showToast('Não é possível banir um administrador', 'error');
+        return;
+    }
+
     const action = ban ? 'banir' : 'desbanir';
-    showConfirmModal(ban ? '🚫 Confirmar Banimento' : '✅ Confirmar Desbanimento', `Tem certeza que deseja <strong>${action}</strong> o usuário <strong style="color:${getRoleColor(target.role)}">${escapeHtml(target.username)}</strong>?`, async () => {
-        try {
-            if (ban) await databaseManager.banUser(userId);
-            else await databaseManager.unbanUser(userId);
-            showToast(ban ? 'Usuário banido' : 'Usuário desbanido', 'success');
-            await loadUsers();
-        } catch (error) { showToast('Erro ao alterar status', 'error'); }
-    });
+    showConfirmModal(
+        ban ? '🚫 Confirmar Banimento' : '✅ Confirmar Desbanimento',
+        `Tem certeza que deseja <strong>${action}</strong> o usuário <strong style="color:${getRoleColor(target.role)}">${escapeHtml(target.username)}</strong>?`,
+        async () => {
+            try {
+                if (ban) {
+                    await databaseManager.banUser(userId);
+                    await logAdminAction('USER_BANNED', { target_user_id: userId, username: target.username });
+                } else {
+                    await databaseManager.unbanUser(userId);
+                    await logAdminAction('USER_UNBANNED', { target_user_id: userId, username: target.username });
+                }
+                showToast(ban ? 'Usuário banido' : 'Usuário desbanido', 'success');
+                await loadUsers();          // Recarrega a lista de usuários
+                await loadActivityLogs();   // Atualiza a tabela de logs no frontend
+            } catch (error) {
+                showToast('Erro ao alterar status: ' + error.message, 'error');
+            }
+        }
+    );
 }
 
 async function resetUserPassword(userId) {
@@ -476,7 +734,16 @@ async function resetUserPassword(userId) {
     const newPass = prompt('Digite a nova senha:');
     if (!newPass || newPass.length < 6) { if (newPass) showToast('Senha deve ter no mínimo 6 caracteres', 'error'); return; }
     showConfirmModal('🔒 Resetar Senha', `Deseja alterar a senha de <strong>${escapeHtml(user.username)}</strong>?`, async () => {
-        try { await databaseManager.updateUser(userId, { password: newPass }); showToast('Senha resetada com sucesso', 'success'); } 
+        try { 
+            await databaseManager.updateUser(userId, { password: newPass }); 
+            await logAdminAction('PASSWORD_RESET', { 
+                target_user_id: userId, 
+                target_username: user.username 
+            });
+            showToast('Senha resetada com sucesso', 'success'); 
+            // Dentro de createUser, logo após showToast
+            await loadActivityLogs();
+        } 
         catch (error) { showToast('Erro ao resetar senha', 'error'); }
     });
 }
@@ -485,9 +752,34 @@ async function deleteUserConfirm(userId) {
     const user = allUsers.find(u => u.id === userId);
     if (!user) return;
     showConfirmModal('🗑️ Excluir Usuário', `Tem certeza que deseja <strong>excluir permanentemente</strong> o usuário <strong style="color:${getRoleColor(user.role)}">${escapeHtml(user.username)}</strong>?<br><br><small style="color:var(--text-tertiary);">Esta ação não pode ser desfeita. Todas as mensagens serão apagadas.</small>`, async () => {
-        try { await databaseManager.deleteUser(userId); showToast(`Usuário ${user.username} excluído com sucesso`, 'success'); await loadUsers(); } 
+        try { 
+            await databaseManager.deleteUser(userId);
+            await logAdminAction('USER_DELETED', { 
+                target_user_id: userId, 
+                target_username: user.username 
+            });
+            showToast(`Usuário ${user.username} excluído com sucesso`, 'success'); await loadUsers();
+            await loadActivityLogs();
+        } 
         catch (error) { showToast('Erro ao excluir usuário: ' + error.message, 'error'); }
     });
+}
+
+
+// ========== LOG DE ATIVIDADES ADMIN ==========
+async function logAdminAction(action, details = {}) {
+    const user = sessionManager.getCurrentUser();
+    if (!user) return;
+    try {
+        await db.from('activity_logs').insert({
+            user_id: user.id,
+            action: action,
+            details: details,
+            user_agent: navigator.userAgent
+        });
+    } catch (e) {
+        console.warn('Erro ao registrar log:', e);
+    }
 }
 
 // ========== ESTATÍSTICAS ==========
@@ -512,19 +804,47 @@ async function loadStats() {
 async function loadActivityLogs() {
     const tbody = document.getElementById('logsTableBody');
     try {
-        const { data: logs, error } = await db.from('activity_logs').select(`id, action, created_at, user:users(username, role)`).order('created_at', { ascending: false }).limit(20);
+        const { data: logs, error } = await db
+            .from('activity_logs')
+            .select(`id, action, created_at, details, user:users(username, role)`)
+            .order('created_at', { ascending: false })
+            .limit(20);
         if (error) throw error;
-        if (!logs || logs.length === 0) { tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;padding:40px;color:var(--text-tertiary);">Nenhuma atividade registrada</td></tr>'; return; }
+        if (!logs || logs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;padding:40px;">Nenhuma atividade registrada</td></tr>';
+            return;
+        }
         tbody.innerHTML = logs.map(log => {
             const username = log.user?.username || 'Sistema';
             const role = log.user?.role || '';
             const roleColor = getRoleColor(role);
             const time = formatTime(log.created_at);
-            const actionLabels = { 'LOGIN': '🔑 Login', 'LOGOUT': '🚪 Logout', 'PASSWORD_CHANGED': '🔒 Alterou senha', 'USER_CREATED': '✨ Usuário criado', 'USER_BANNED': '🚫 Usuário banido', 'USER_UNBANNED': '✅ Usuário desbanido', 'USER_DELETED': '🗑️ Usuário excluído' };
-            const actionLabel = actionLabels[log.action] || log.action;
-            return `<tr><td><span style="color: ${roleColor}; font-weight: 500;">${escapeHtml(username)}</span></td><td>${actionLabel}</td><td style="color: var(--text-tertiary); font-size: 13px;">${time}</td></tr>`;
+            
+            // Pega o nome do alvo (quando disponível) dos details
+            let targetName = '';
+            if (log.details) {
+                if (log.details.target_username) targetName = log.details.target_username;
+                else if (log.details.username) targetName = log.details.username;
+                else if (log.details.command) targetName = `/${log.details.command}`;
+            }
+            
+            // Obtém o rótulo base da ação
+            let baseLabel = actionLabels[log.action] || log.action;
+            // Se tiver nome do alvo, adiciona ao rótulo
+            const finalLabel = targetName ? `${baseLabel}: ${escapeHtml(targetName)}` : baseLabel;
+            
+            return `
+                <tr>
+                    <td style="color: ${roleColor}; font-weight: 500;">${escapeHtml(username)}</td>
+                    <td>${finalLabel}</td>
+                    <td style="color: var(--text-tertiary); font-size: 13px;">${time}</td>
+                </tr>
+            `;
         }).join('');
-    } catch (error) { console.error('Erro ao carregar logs:', error); tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;padding:20px;color:var(--accent-danger);">Erro ao carregar atividades</td></tr>'; }
+    } catch (error) {
+        console.error('Erro ao carregar logs:', error);
+        tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;padding:20px;color:red;">Erro ao carregar atividades</td></tr>';
+    }
 }
 
 // ========== MODAL DE CONFIRMAÇÃO ==========
@@ -664,7 +984,11 @@ function showCreatePollModal() {
         const options = Array.from(optionInputs).map(input => input.value.trim()).filter(val => val !== '');
         if (!question) { showToast('Digite a pergunta', 'error'); return; }
         if (options.length < 2) { showToast('Adicione pelo menos 2 opções', 'error'); return; }
-        try { await db.from('polls').insert({ question, options: JSON.stringify(options), created_by: currentUserId, is_active: true }); showToast('Enquete criada!', 'success'); modal.remove(); loadPolls(); } 
+        try { 
+            await db.from('polls').insert({ question, options: JSON.stringify(options), created_by: currentUserId, is_active: true });
+            await logAdminAction('POLL_CREATED', { question });
+            showToast('Enquete criada!', 'success'); modal.remove(); loadPolls(); 
+        } 
         catch (e) { showToast('Erro: ' + e.message, 'error'); }
     };
     modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
@@ -772,7 +1096,12 @@ function showCreateAnnouncementModal() {
         const title = document.getElementById('announcementTitle').value.trim();
         const content = document.getElementById('announcementContent').value.trim();
         if (!title || !content) { showToast('Preencha título e conteúdo', 'error'); return; }
-        try { await db.from('announcements').insert({ title, content, created_by: currentUserId }); showToast('Anúncio publicado!', 'success'); modal.remove(); loadAnnouncements(); } 
+        try { 
+            await db.from('announcements').insert({ title, content, created_by: currentUserId });
+            await logAdminAction('ANNOUNCEMENT_CREATED', { title });
+            showToast('Anúncio publicado!', 'success'); modal.remove(); loadAnnouncements(); 
+            await loadActivityLogs();
+        } 
         catch (e) { showToast('Erro: ' + e.message, 'error'); }
     };
     modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
@@ -780,7 +1109,13 @@ function showCreateAnnouncementModal() {
 
 async function deleteAnnouncement(id) {
     if (!confirm('Excluir este anúncio?')) return;
-    try { await db.from('announcements').delete().eq('id', id); showToast('Anúncio excluído', 'success'); loadAnnouncements(); } 
+    try { 
+        await db.from('announcements').delete().eq('id', id);
+        await logAdminAction('ANNOUNCEMENT_DELETED', { announcement_id: id });
+        showToast('Anúncio excluído', 'success'); loadAnnouncements(); 
+        await loadActivityLogs();
+    }
+        
     catch (e) { showToast('Erro ao excluir', 'error'); }
 }
 

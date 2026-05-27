@@ -942,3 +942,15 @@ body {
     color: #6b6b6b;
     margin-left: 6px;
 }
+
+.meme-gif {
+    max-width: 200px;
+    max-height: 200px;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+.meme-gif:hover {
+    transform: scale(1.02);
+}

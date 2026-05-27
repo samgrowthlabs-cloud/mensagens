@@ -179,6 +179,25 @@
         </div>
       </section>
 
+
+      <!-- MEMES/GIFS (apenas admin e supervisor) -->
+      <section class="memes-section" id="memesSection" style="display:none;">
+        <div class="section-header">
+          <h2 class="section-title">🎬 Comandos de Memes/GIFs</h2>
+          <button class="btn-add-user" onclick="showCreateMemeModal()">+ Novo Comando</button>
+        </div>
+        <div class="table-container" style="max-height: 400px; overflow-y: auto;">
+          <table class="admin-table">
+            <thead>
+              <tr><th>Comando</th><th>URL do GIF/WebP</th><th>Ações</th</tr>
+            </thead>
+            <tbody id="memesTableBody">
+              <tr><td colspan="3" style="text-align:center;padding:20px;">Carregando...</td</tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       <!-- AÇÕES EM MASSA (apenas admin) -->
       <section class="mass-actions-section" id="massActions" style="display:none;">
         <div class="mass-actions">
@@ -186,6 +205,7 @@
           <button class="btn-mass danger btn-mass-private" onclick="deleteAllPrivateMessages()">💬 Apagar mensagens privadas</button>
           <button class="btn-mass danger btn-mass-geral" onclick="deleteAllGeralMessages()">🌐 Apagar mensagens gerais</button>
           <button class="btn-mass danger btn-mass-all" onclick="deleteAllMessages()">⚠️ Apagar TODAS as mensagens</button>
+          <button class="btn-mass warning" onclick="cleanOldGeralMessages()">🧹 Limpar mensagens (+7 dias)</button>
         </div>
       </section>
 
