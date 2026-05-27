@@ -252,6 +252,10 @@ function createMessageDiv(msg) {
         </div>
     `;
 
+    setTimeout(async () => {
+        await renderPoll(msg.id, div.querySelector('.geral-message-text'));
+    }, 100);
+
     // Carregar reações existentes
     setTimeout(async () => {
         await loadMessageReactions(msg.id);
@@ -537,6 +541,47 @@ async function sendGeralMessage() {
                 mentionIds.push(user.id);
             }
         }
+    }
+
+    // Verificar se é comando /poll
+    const pollData = parsePollCommand(content);
+    if (pollData) {
+        // Cria a mensagem normalmente, mas depois associamos a enquete
+        const messageData = {
+            user_id: currentUser.id,
+            content: content, // o comando original será salvo
+            mentions: []
+        };
+        if (replyToMessage) {
+            messageData.reply_to = {
+                id: replyToMessage.id,
+                user_id: replyToMessage.userId,
+                username: replyToMessage.username,
+                content: replyToMessage.content
+            };
+            cancelReply();
+        }
+        const { data: msg, error } = await db
+            .from('geral_messages')
+            .insert(messageData)
+            .select()
+            .single();
+        if (error) throw error;
+        
+        // Criar a enquete associada a esta mensagem
+        await db.from('geral_polls').insert({
+            message_id: msg.id,
+            question: pollData.question,
+            options: JSON.stringify(pollData.options),
+            created_by: currentUser.id
+        });
+        
+        renderMessage(msg);
+        input.value = '';
+        input.style.height = 'auto';
+        input.disabled = false;
+        input.focus();
+        return;
     }
     
     const messageData = {
@@ -1353,3 +1398,189 @@ async function toggleReaction(messageId, emoji) {
         showToast('Erro ao reagir: ' + e.message, 'error');
     }
 }
+
+
+
+// ========== COMANDO /POLL ==========
+function parsePollCommand(content) {
+    // Formato: /poll "Pergunta" "Opção1" "Opção2" ["Opção3"...]
+    const trimmed = content.trim();
+    if (!trimmed.startsWith('/sondagem')) return null;
+    
+    // Expressão regular para capturar textos entre aspas
+    const regex = /"([^"]*)"/g;
+    const matches = [...trimmed.matchAll(regex)];
+    if (matches.length < 3) return null;
+    
+    const question = matches[0][1];
+    const options = matches.slice(1).map(m => m[1]);
+    return { question, options };
+}
+
+
+
+
+// ========== POLLS NO CHAT ==========
+async function loadPollForMessage(messageId) {
+    try {
+        const { data: poll, error } = await db
+            .from('geral_polls')
+            .select('*')
+            .eq('message_id', messageId)
+            .maybeSingle();
+        if (error) throw error;
+        return poll;
+    } catch (e) {
+        console.warn('Erro ao carregar enquete:', e);
+        return null;
+    }
+}
+
+async function renderPoll(messageId, containerElement) {
+    const poll = await loadPollForMessage(messageId);
+    if (!poll) return;
+    
+    const options = JSON.parse(poll.options);
+    const userVote = await getUserPollVote(poll.id);
+    
+    const pollDiv = document.createElement('div');
+    pollDiv.className = 'chat-poll';
+    pollDiv.dataset.pollId = poll.id;
+    pollDiv.dataset.isActive = poll.is_active;
+    
+    let votesHTML = '';
+    if (userVote || !poll.is_active) {
+        // Exibir resultados
+        const results = await getPollResults(poll.id, options.length);
+        votesHTML = renderPollResults(results, options, userVote);
+    } else {
+        votesHTML = renderPollOptions(options, poll.id);
+    }
+    
+    pollDiv.innerHTML = `
+        <div class="poll-question">📊 ${escapeHtml(poll.question)}</div>
+        ${votesHTML}
+        <div class="poll-footer">
+            <span class="poll-total-votes" id="poll-total-${poll.id}">Carregando...</span>
+            <button class="poll-view-results" onclick="togglePollResults('${poll.id}', this)">Ver resultados</button>
+            ${!poll.is_active ? '<span class="poll-closed">🔒 Encerrada</span>' : ''}
+        </div>
+    `;
+    
+    containerElement.appendChild(pollDiv);
+    await updatePollTotal(poll.id);
+}
+
+async function getUserPollVote(pollId) {
+    const { data, error } = await db
+        .from('geral_poll_votes')
+        .select('option_index')
+        .eq('poll_id', pollId)
+        .eq('user_id', currentUser.id)
+        .maybeSingle();
+    if (error) throw error;
+    return data;
+}
+
+async function getPollResults(pollId, numOptions) {
+    const { data: votes, error } = await db
+        .from('geral_poll_votes')
+        .select('option_index')
+        .eq('poll_id', pollId);
+    if (error) throw error;
+    const counts = new Array(numOptions).fill(0);
+    votes.forEach(v => counts[v.option_index]++);
+    const total = counts.reduce((a,b) => a+b, 0);
+    const percentages = counts.map(c => total > 0 ? Math.round((c / total) * 100) : 0);
+    return { counts, percentages, total };
+}
+
+function renderPollResults(results, options, userVote) {
+    return `
+        <div class="poll-results">
+            ${options.map((opt, i) => `
+                <div class="poll-result-bar">
+                    <div class="poll-result-label">${escapeHtml(opt)}</div>
+                    <div class="poll-bar"><div class="poll-bar-fill" style="width: ${results.percentages[i]}%;"></div></div>
+                    <div class="poll-result-count">${results.counts[i]} (${results.percentages[i]}%)</div>
+                    ${userVote?.option_index === i ? '<span class="poll-your-vote">✓ Seu voto</span>' : ''}
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+function renderPollOptions(options, pollId) {
+    return `
+        <div class="poll-options">
+            ${options.map((opt, idx) => `
+                <button class="poll-option-btn" onclick="voteInPoll('${pollId}', ${idx}, this)">${escapeHtml(opt)}</button>
+            `).join('')}
+        </div>
+    `;
+}
+
+async function updatePollTotal(pollId) {
+    const { data: votes, error } = await db
+        .from('geral_poll_votes')
+        .select('id', { count: 'exact' })
+        .eq('poll_id', pollId);
+    if (error) return;
+    const totalSpan = document.getElementById(`poll-total-${pollId}`);
+    if (totalSpan) totalSpan.textContent = `${votes.length} voto${votes.length !== 1 ? 's' : ''}`;
+}
+
+window.voteInPoll = async function(pollId, optionIndex, button) {
+    try {
+        // Verificar se já votou
+        const existing = await getUserPollVote(pollId);
+        if (existing) {
+            showToast('Você já votou nesta enquete', 'warning');
+            return;
+        }
+        await db.from('geral_poll_votes').insert({
+            poll_id: pollId,
+            user_id: currentUser.id,
+            option_index: optionIndex
+        });
+        showToast('Voto registrado!', 'success');
+        // Atualizar a UI da enquete para mostrar resultados
+        const pollContainer = button.closest('.chat-poll');
+        if (pollContainer) {
+            const pollIdAttr = pollContainer.dataset.pollId;
+            const { data: poll } = await db.from('geral_polls').select('*').eq('id', pollIdAttr).single();
+            const options = JSON.parse(poll.options);
+            const results = await getPollResults(pollIdAttr, options.length);
+            const newHTML = renderPollResults(results, options, { option_index: optionIndex });
+            pollContainer.querySelector('.poll-options')?.remove();
+            pollContainer.querySelector('.poll-results')?.remove();
+            pollContainer.insertAdjacentHTML('beforeend', newHTML);
+            await updatePollTotal(pollIdAttr);
+        }
+    } catch (e) {
+        showToast('Erro ao votar: ' + e.message, 'error');
+    }
+};
+
+window.togglePollResults = async function(pollId, button) {
+    const pollContainer = button.closest('.chat-poll');
+    const resultsDiv = pollContainer.querySelector('.poll-results');
+    const optionsDiv = pollContainer.querySelector('.poll-options');
+    if (resultsDiv && resultsDiv.style.display !== 'none') {
+        // Esconder resultados e mostrar opções (se enquete ativa)
+        const poll = await db.from('geral_polls').select('is_active').eq('id', pollId).single();
+        if (poll.data?.is_active) {
+            resultsDiv.style.display = 'none';
+            if (optionsDiv) optionsDiv.style.display = 'flex';
+            button.textContent = 'Ver resultados';
+        } else {
+            showToast('Enquete encerrada, não é possível votar', 'info');
+        }
+    } else {
+        // Mostrar resultados
+        if (optionsDiv) optionsDiv.style.display = 'none';
+        if (resultsDiv) resultsDiv.style.display = 'block';
+        button.textContent = 'Ocultar resultados';
+        await updatePollTotal(pollId);
+    }
+};
