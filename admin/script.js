@@ -278,10 +278,17 @@ function renderUsersTable(users) {
                     `<button class="btn-action" onclick="deleteUserConfirm('${user.id}')" style="background:rgba(239,68,68,0.1);color:#ef4444;border-color:#ef4444;">Excluir</button>` : ''}
             `;
                 } else if (isSupervisor) {
-                    // Supervisor: apenas Banir/Desbanir (users e moderators)
-                    actions = canBan ? (user.is_banned ? 
-                        `<button class="btn-action success" onclick="toggleBanUser('${user.id}', false)">Desbanir</button>` : 
-                        `<button class="btn-action danger" onclick="toggleBanUser('${user.id}', true)">Banir</button>`) : '';
+                    // Supervisor: Editar + Banir/Desbanir (apenas para usuários que não sejam admin/supervisor)
+                    let editBtn = '';
+                    if (canBan) {
+                        editBtn = `<button class="btn-action" onclick="showEditUserModal('${user.id}')">Editar</button>`;
+                        const banBtn = user.is_banned ? 
+                            `<button class="btn-action success" onclick="toggleBanUser('${user.id}', false)">Desbanir</button>` : 
+                            `<button class="btn-action danger" onclick="toggleBanUser('${user.id}', true)">Banir</button>`;
+                        actions = `${editBtn} ${banBtn}`;
+                    } else {
+                        actions = '';
+                    }
                 } else if (isModerator && canBan) {
                     // Moderador: apenas Banir/Desbanir
                     actions = user.is_banned ? 
@@ -345,7 +352,7 @@ function updateSortArrows() {
 
 // ========== CRUD USUÁRIOS ==========
 function showCreateUserModal() {
-    if (currentUserRole !== 'admin') return;
+    if (currentUserRole !== 'admin' && currentUserRole !== 'supervisor') return;
     document.getElementById('createUserModal').style.display = 'flex';
 }
 function closeCreateUserModal() {
@@ -355,7 +362,7 @@ function closeCreateUserModal() {
     document.getElementById('newPassword').value = '';
 }
 async function createUser() {
-    if (currentUserRole !== 'admin') { showToast('Apenas administradores podem criar usuários', 'error'); return; }
+    if (currentUserRole !== 'admin' && currentUserRole !== 'supervisor') { showToast('Apenas administradores podem criar usuários', 'error'); return; }
     const username = document.getElementById('newUsername').value.trim();
     const email = document.getElementById('newEmail').value.trim();
     const password = document.getElementById('newPassword').value;
@@ -374,10 +381,19 @@ async function createUser() {
 }
 
 function showEditUserModal(userId) {
-    if (currentUserRole !== 'admin') return;
+    if (currentUserRole !== 'admin' && currentUserRole !== 'supervisor') return;
     const user = allUsers.find(u => u.id === userId);
     if (!user) return;
     editingUserId = userId;
+    if (currentUserRole === 'supervisor') {
+        const roleSelect = document.getElementById('editRole');
+        // Remove opções 'admin' e 'supervisor'
+        Array.from(roleSelect.options).forEach(opt => {
+            if (opt.value === 'admin' || opt.value === 'supervisor') {
+                opt.remove();
+            }
+        });
+    }
     document.getElementById('editUsername').value = user.username;
     document.getElementById('editEmail').value = user.email || '';
     document.getElementById('editRole').value = user.role;
@@ -388,25 +404,53 @@ function showEditUserModal(userId) {
     document.getElementById('editUserModal').style.display = 'flex';
 }
 function closeEditUserModal() { document.getElementById('editUserModal').style.display = 'none'; editingUserId = null; }
+
 async function saveUserEdit() {
-    if (currentUserRole !== 'admin' || !editingUserId) return;
+    if (currentUserRole !== 'admin' && currentUserRole !== 'supervisor') return;
+    if (!editingUserId) return;
+
     const username = document.getElementById('editUsername').value.trim();
     const email = document.getElementById('editEmail').value.trim();
     const newPassword = document.getElementById('editNewPassword').value;
+    const newRole = document.getElementById('editRole').value;
+
+    // Buscar dados atuais do usuário que está sendo editado
+    const targetUser = allUsers.find(u => u.id === editingUserId);
+    if (!targetUser) return;
+
+    // Supervisor não pode editar admin ou outro supervisor
+    if (currentUserRole === 'supervisor' && (targetUser.role === 'admin' || targetUser.role === 'supervisor')) {
+        showToast('Você não pode editar administradores ou supervisores', 'error');
+        return;
+    }
+
+    // Supervisor não pode promover ninguém a admin ou supervisor
+    if (currentUserRole === 'supervisor' && (newRole === 'admin' || newRole === 'supervisor')) {
+        showToast('Supervisores não podem promover usuários a administrador ou supervisor', 'error');
+        return;
+    }
+
     try {
         const updates = {};
         if (username) updates.username = username;
         if (email) updates.email = email;
-        if (editingUserId !== currentUserId) {
-            const role = document.getElementById('editRole').value;
-            if (role) updates.role = role;
+
+        // Atualizar cargo apenas se não for o próprio usuário e se tiver permissão
+        if (editingUserId !== currentUserId && newRole) {
+            updates.role = newRole;
         }
+
         await databaseManager.updateUser(editingUserId, updates);
-        if (newPassword) { await databaseManager.updateUser(editingUserId, { password: newPassword }); showToast('Senha resetada com sucesso', 'success'); }
+        if (newPassword) {
+            await databaseManager.updateUser(editingUserId, { password: newPassword });
+            showToast('Senha resetada com sucesso', 'success');
+        }
         showToast('Usuário atualizado', 'success');
         closeEditUserModal();
         await loadUsers();
-    } catch (error) { showToast('Erro ao atualizar usuário: ' + error.message, 'error'); }
+    } catch (error) {
+        showToast('Erro ao atualizar usuário: ' + error.message, 'error');
+    }
 }
 
 async function toggleBanUser(userId, ban) {
@@ -427,7 +471,7 @@ async function toggleBanUser(userId, ban) {
 }
 
 async function resetUserPassword(userId) {
-    if (currentUserRole !== 'admin') return;
+    if (currentUserRole !== 'admin' && currentUserRole !== 'supervisor') return;
     const user = allUsers.find(u => u.id === userId);
     const newPass = prompt('Digite a nova senha:');
     if (!newPass || newPass.length < 6) { if (newPass) showToast('Senha deve ter no mínimo 6 caracteres', 'error'); return; }
