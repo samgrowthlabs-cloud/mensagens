@@ -534,7 +534,50 @@ function renderReplyPreview() {
 async function sendGeralMessage() {
     const input = document.getElementById('geralMessageInput');
     const content = input.value.trim();
-    if (!content) return;
+    // 🆕 COMANDO /gif
+    if (content.toLowerCase().startsWith('/gif ')) {
+        const gifName = content.substring(5).trim().toLowerCase().replace(/^\//, ''); // remove barra inicial se vier
+        if (!gifName) {
+            showToast('Use /gif nome_do_gif', 'warning');
+            input.value = '';
+            input.disabled = false;
+            input.focus();
+            return;
+        }
+        // Verificar se o comando existe no objeto memeCommands (que já tem formato "/nome")
+        const fullCommand = '/' + gifName;
+        if (memeCommands[fullCommand]) {
+            // Envia a mensagem normal com o conteúdo "/nome_do_gif"
+            const fakeContent = fullCommand;
+            // Reinicia o input e processa como se fosse uma mensagem comum
+            input.value = '';
+            // Chama o resto do fluxo de envio com o conteúdo modificado
+            // Reaproveitar o código de envio de mensagem comum
+            input.disabled = true;
+            const messageData = {
+                user_id: currentUser.id,
+                content: fakeContent,
+                mentions: []
+            };
+            // (menções e reply são ignorados para comandos)
+            try {
+                const { data: msg, error } = await db.from('geral_messages').insert(messageData).select().single();
+                if (error) throw error;
+                if (msg) renderMessage(msg);
+            } catch (e) {
+                showToast('Erro ao enviar GIF', 'error');
+            } finally {
+                input.disabled = false;
+                input.focus();
+            }
+        } else {
+            showToast(`GIF "${gifName}" não encontrado. Use /help para ver os disponíveis.`, 'error');
+            input.value = '';
+            input.disabled = false;
+            input.focus();
+        }
+        return;
+    }
     
     // ⬇️ VERIFICAÇÃO DE RATE LIMIT
     try {
@@ -1726,31 +1769,31 @@ function processGeneralCommands(content) {
     }
 
     // /help
-    if (cmd === '/help') {
+    if (cmd === '/ajuda') {
         cmdHelp();
         return true;
     }
 
     // /time
-    if (cmd === '/time') {
+    if (cmd === '/hora') {
         cmdTime();
         return true;
     }
 
     // /roll [lados]
-    if (cmd === '/roll') {
+    if (cmd === '/dado') {
         cmdRoll(args);
         return true;
     }
 
     // /coinflip
-    if (cmd === '/coinflip') {
+    if (cmd === '/caracoroa') {
         cmdCoinflip();
         return true;
     }
 
     // /8ball pergunta
-    if (cmd === '/8ball') {
+    if (cmd === '/simounao') {
         // Reconstruir a pergunta (tudo após o comando)
         let question = content.substring(6).trim(); // remove "/8ball "
         if (!question) question = args.join(' ');
@@ -1791,15 +1834,32 @@ async function sendSystemMessage(text) {
 
 // ========== COMANDOS LÚDICOS ==========
 function cmdHelp() {
-    const helpText = `📖 **Comandos disponíveis:**\n\n` +
-        `/help – Exibe esta ajuda\n` +
-        `/time – Mostra data e hora atual\n` +
-        `/roll [lados] – Rola um dado (padrão 6 lados)\n` +
-        `/coinflip – Cara ou coroa\n` +
-        `/8ball "pergunta" – Resposta mágica\n` +
-        `/avatar [@usuario] – Exibe perfil\n` +
-        `/sondagem "Pergunta" "Op1" "Op2"... – Cria enquete`;
-    sendSystemMessage(helpText);
+    const helpMessage = `
+📖 **COMANDOS DISPONÍVEIS**
+
+━━━━━━━━━━━━━━━━━━━━━━━━━
+**👤 PERFIL**
+/avatar [@usuario] – Ver perfil (seu ou de outro)
+━━━━━━━━━━━━━━━━━━━━━━━━━
+**🎲 DIVERSÃO**
+/dado [lados] – Rola um dado (padrão 6 lados)
+/caracoroa – Cara ou coroa
+/simounao "pergunta" – Resposta mágica (Sim/Não/Quem sabe...)
+━━━━━━━━━━━━━━━━━━━━━━━━━
+**📊 ENQUETES**
+/sondagem "Pergunta" "Op1" "Op2" ["Op3"...] – Cria enquete interativa
+━━━━━━━━━━━━━━━━━━━━━━━━━
+**ℹ️ INFORMAÇÃO**
+/hora – Data/hora atual
+/ajuda – Exibe esta ajuda
+━━━━━━━━━━━━━━━━━━━━━━━━━
+**🎬 MEMES/GIFS**
+/gif nome – Envia um GIF ou meme cadastrado (ex: /gif meme01)
+━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✨ *Dica: você também pode usar formatação como **negrito**, *itálico*, __sublinhado__ e ~~riscado~~ nas mensagens!*
+    `;
+    sendSystemMessage(helpMessage);
 }
 
 function cmdTime() {
