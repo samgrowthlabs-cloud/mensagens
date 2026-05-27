@@ -140,6 +140,23 @@ async function loadGeralMessages() {
 function createMessageDiv(msg) {
     const user = allUsers[msg.user_id] || { username: 'Desconhecido', role: 'user', avatar_url: null };
     const isOwn = msg.user_id === currentUser.id;
+
+
+    // 🔥 MENSAGEM DO SISTEMA (por UUID ou flag)
+    const SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000000';
+    if (msg.is_system || msg.user_id === SYSTEM_USER_ID || user.id === SYSTEM_USER_ID) {
+        const div = document.createElement('div');
+        div.className = 'geral-message geral-message-system';
+        div.id = `msg-${msg.id}`;
+        div.innerHTML = `
+            <div class="geral-message-avatar">🤖</div>
+            <div class="geral-message-content">
+                <div class="geral-message-text">${formatMessageText(escapeHtml(msg.content))}</div>
+            </div>
+        `;
+        return div;
+    }
+
     const isCurrentAdmin = currentUser.role === 'admin';
     const isCurrentModerator = currentUser.role === 'moderator';
     const isCurrentSupervisor = currentUser.role === 'supervisor';
@@ -512,6 +529,8 @@ function renderReplyPreview() {
     }
 }
 
+
+
 async function sendGeralMessage() {
     const input = document.getElementById('geralMessageInput');
     const content = input.value.trim();
@@ -544,6 +563,15 @@ async function sendGeralMessage() {
                 mentionIds.push(user.id);
             }
         }
+    }
+
+    // Verificar comandos gerais primeiro
+    if (processGeneralCommands(content)) {
+        input.value = '';
+        input.style.height = 'auto';
+        input.disabled = false;
+        input.focus();
+        return;
     }
 
     // Verificar se é comando /poll
@@ -1673,4 +1701,142 @@ function startLastSeenUpdater() {
         updateLastSeen();
         fetchLastActiveUser();
     }, 30000); // a cada 30 segundos
+}
+
+
+
+// ========== COMANDOS GERAIS ==========
+function processGeneralCommands(content) {
+    const trimmed = content.trim().toLowerCase();
+    const parts = trimmed.split(/\s+/);
+    const cmd = parts[0];
+    const args = parts.slice(1);
+
+    // /avatar (já existente)
+    if (cmd === '/avatar') {
+        if (args.length === 0) {
+            showUserProfile(currentUser.id);
+        } else {
+            const username = args[0].replace(/^@/, '');
+            const user = Object.values(allUsers).find(u => u.username.toLowerCase() === username);
+            if (user) showUserProfile(user.id);
+            else showToast(`Usuário "${username}" não encontrado`, 'error');
+        }
+        return true;
+    }
+
+    // /help
+    if (cmd === '/help') {
+        cmdHelp();
+        return true;
+    }
+
+    // /time
+    if (cmd === '/time') {
+        cmdTime();
+        return true;
+    }
+
+    // /roll [lados]
+    if (cmd === '/roll') {
+        cmdRoll(args);
+        return true;
+    }
+
+    // /coinflip
+    if (cmd === '/coinflip') {
+        cmdCoinflip();
+        return true;
+    }
+
+    // /8ball pergunta
+    if (cmd === '/8ball') {
+        // Reconstruir a pergunta (tudo após o comando)
+        let question = content.substring(6).trim(); // remove "/8ball "
+        if (!question) question = args.join(' ');
+        cmd8ball(question);
+        return true;
+    }
+
+    return false;
+}
+
+
+// ========== MENSAGENS DE SISTEMA ==========
+const SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000000';
+
+async function sendSystemMessage(text) {
+    const systemMessage = {
+        user_id: SYSTEM_USER_ID,
+        content: text,
+        mentions: [],
+        is_system: true   // 🔥 flag de sistema
+    };
+    const { data: msg, error } = await db
+        .from('geral_messages')
+        .insert(systemMessage)
+        .select()
+        .single();
+    if (error) {
+        console.warn('Erro ao salvar mensagem de sistema:', error);
+        return;
+    }
+    renderMessage(msg);
+}
+
+
+
+
+
+
+// ========== COMANDOS LÚDICOS ==========
+function cmdHelp() {
+    const helpText = `📖 **Comandos disponíveis:**\n\n` +
+        `/help – Exibe esta ajuda\n` +
+        `/time – Mostra data e hora atual\n` +
+        `/roll [lados] – Rola um dado (padrão 6 lados)\n` +
+        `/coinflip – Cara ou coroa\n` +
+        `/8ball "pergunta" – Resposta mágica\n` +
+        `/avatar [@usuario] – Exibe perfil\n` +
+        `/sondagem "Pergunta" "Op1" "Op2"... – Cria enquete`;
+    sendSystemMessage(helpText);
+}
+
+function cmdTime() {
+    const now = new Date();
+    const formatted = now.toLocaleString('pt-BR', { 
+        day: '2-digit', month: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
+    sendSystemMessage(`🕒 ${formatted}`);
+}
+
+function cmdRoll(args) {
+    let sides = 6;
+    if (args && args.length > 0) {
+        const parsed = parseInt(args[0]);
+        if (!isNaN(parsed) && parsed >= 2 && parsed <= 100) sides = parsed;
+        else sendSystemMessage(`❌ Número inválido. Use /roll [2-100]. Usando 6 lados.`);
+    }
+    const result = Math.floor(Math.random() * sides) + 1;
+    sendSystemMessage(`🎲 ${currentUser.username} rolou um dado de ${sides} lados e tirou: **${result}**`);
+}
+
+function cmdCoinflip() {
+    const result = Math.random() < 0.5 ? 'Cara' : 'Coroa';
+    sendSystemMessage(`🪙 ${currentUser.username} jogou uma moeda: **${result}**`);
+}
+
+function cmd8ball(question) {
+    if (!question || question.length === 0) {
+        sendSystemMessage(`❌ Faça uma pergunta! Ex: /8ball "Vou ganhar na loteria?"`);
+        return;
+    }
+    const responses = [
+        "Sim, definitivamente.", "Absolutamente sim.", "Sem dúvida.", "Pergunte novamente mais tarde.",
+        "Melhor não te contar agora.", "Não posso prever agora.", "Concentre-se e pergunte novamente.",
+        "Não conte com isso.", "Muito duvidoso.", "Não.", "Os sinais apontam que sim.", "HELL NAH", "DESISTA",
+    ];
+    const answer = responses[Math.floor(Math.random() * responses.length)];
+    sendSystemMessage(`🎱 ${currentUser.username} perguntou: "${question}"\nResposta: **${answer}**`);
 }

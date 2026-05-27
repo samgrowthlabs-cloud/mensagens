@@ -1243,3 +1243,17 @@ body {
 #lastSeenText {
     flex: 1;
 }
+
+
+/* Mensagens do sistema */
+.geral-message-system .geral-message-username {
+    color: #f59e0b;
+}
+.geral-message-system .geral-message-content {
+    background: rgba(245, 158, 11, 0.1);
+    border-radius: 12px;
+    padding: 8px 12px;
+}
+.geral-message-system .geral-message-text {
+    font-weight: 500;
+}
