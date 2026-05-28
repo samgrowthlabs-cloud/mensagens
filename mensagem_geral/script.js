@@ -80,7 +80,8 @@ const commandList = [
     { cmd: '/crypto', desc: 'Cotação de criptomoeda (ex: /crypto btc)' },
     { cmd: '/dolar', desc: 'Cotação do dólar comercial' },
     { cmd: '/quote', desc: 'Frase motivacional aleatória' },
-    { cmd: '/rps', desc: 'Jogue pedra, papel ou tesoura (ex: /rps pedra)' }
+    { cmd: '/rps', desc: 'Jogue pedra, papel ou tesoura (ex: /rps pedra)' },
+    { cmd: '/calc', desc: 'Use matemática (ex: /calc 2 semanas para dias, /calc 10% de 200'}
 ];
 
 let activeSuggestions = false;
@@ -2311,50 +2312,6 @@ async function processGeneralCommands(content) {
     }
 
 
-    if (cmd === '/buzz') {
-        // Verifica permissão: apenas admin, supervisor e moderador
-        if (!['admin', 'supervisor', 'moderator'].includes(currentUser.role)) {
-            sendSystemMessage(`❌ Apenas administradores, supervisores e moderadores podem usar /buzz.`);
-            return true;
-        }
-        
-        // Cooldown de 30 segundos para o mesmo usuário
-        const now = Date.now();
-        if (buzzCooldown[currentUser.id] && now - buzzCooldown[currentUser.id] < 30000) {
-            const remaining = Math.ceil((30000 - (now - buzzCooldown[currentUser.id])) / 1000);
-            sendSystemMessage(`⏳ Aguarde ${remaining} segundos antes de usar /buzz novamente.`);
-            return true;
-        }
-        buzzCooldown[currentUser.id] = now;
-        
-        // Envia mensagem de sistema avisando
-        sendSystemMessage(`📳 ${currentUser.username} fez o chat inteiro VIBRAR!`);
-        
-        // Obtém todos os clientes conectados? Não, apenas quem está com a página aberta.
-        // A vibração será disparada via um evento de broadcast usando o canal Realtime.
-        // Vamos enviar um evento personalizado para todos os clientes inscritos no canal 'geral'
-        
-        try {
-            // Usa o canal Realtime para enviar um evento de vibração
-            await db.channel('geral-vibrate').send({
-                type: 'broadcast',
-                event: 'buzz',
-                payload: {
-                    from: currentUser.username,
-                    timestamp: now
-                }
-            });
-            sendSystemMessage(`📳 Vibração enviada para todos os usuários ativos!`);
-        } catch (e) {
-            sendSystemMessage(`❌ Erro ao enviar vibração: ${e.message}`);
-        }
-        
-        return true;
-    }
-
-
-
-    // /tweet "texto" - Com tweet estilizado (envia como sistema)
 
     // /tweet "texto" - Card moderno com indicador "tweetou"
     if (cmd === '/tweet') {
@@ -2813,28 +2770,148 @@ async function processGeneralCommands(content) {
         return true;
     }
 
-    if (cmd === '/tempo') {
-        if (args.length === 0) {
-            sendSystemMessage(`❌ Use: /tempo "cidade" (ex: /tempo São Paulo)`);
+    // ========== CALCULADORA DO DIA A DIA ==========
+    if (cmd === '/calc') {
+        let expr = content.substring(5).trim();
+        if (!expr) {
+            sendSystemMessage(`❌ Use: /calc <expressão>
+    Exemplos:
+    • Aritmética: 2+2*3, (5+3)/(2-1), 2^10, sqrt(144), raiz(25)
+    • Porcentagem: 10% de 200, 5% + 10% de 100, 20% de 30% de 500
+    • Conversões: 100km para m, 2.5kg para g, 1h para min, 30c para f, 500g para l
+    • Regra de três: 3 10 6 x
+    • Juros simples: juros 1000 5% 12
+    `);
             return true;
         }
-        const city = args.join(' ');
-        const apiKey = '196f3ab77cb5a56872ae72a58a4b19a5'; // <-- insira sua chave aqui
+
         try {
-            const response = await fetch(`https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(city)}&appid=${apiKey}&units=metric&lang=pt_br`);
-            const data = await response.json();
-            if (data.cod !== 200) {
-                sendSystemMessage(`❌ Cidade "${city}" não encontrada. Tente o nome em inglês ou adicione ",BR" (ex: /tempo Maringa,BR)`);
+            let result;
+            let lower = expr.toLowerCase();
+
+            // ---------- REGRA DE TRÊS ----------
+            let regraMatch = expr.match(/^(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+x$/);
+            if (regraMatch) {
+                let a = parseFloat(regraMatch[1]);
+                let b = parseFloat(regraMatch[2]);
+                let c = parseFloat(regraMatch[3]);
+                result = (b * c) / a;
+                sendSystemMessage(`📐 Regra de três: ${a} → ${b}, ${c} → x = ${result}`);
                 return true;
             }
-            const temp = data.main.temp;
-            const feelsLike = data.main.feels_like;
-            const desc = data.weather[0].description;
-            const umid = data.main.humidity;
-            const vento = data.wind.speed;
-            sendSystemMessage(`🌤️ **${city}**\nTemperatura: ${temp}°C (sensação ${feelsLike}°C)\n${desc}\nUmidade: ${umid}% | Vento: ${vento} m/s`);
+
+            // ---------- JUROS SIMPLES ----------
+            let jurosMatch = expr.match(/^juros\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)%\s+(\d+(?:\.\d+)?)$/i);
+            if (jurosMatch) {
+                let capital = parseFloat(jurosMatch[1]);
+                let taxa = parseFloat(jurosMatch[2]) / 100;
+                let tempo = parseFloat(jurosMatch[3]);
+                let juros = capital * taxa * tempo;
+                let total = capital + juros;
+                sendSystemMessage(`💰 Juros simples: capital ${capital}, taxa ${taxa*100}%, tempo ${tempo}\nJuros = ${juros}\nMontante = ${total}`);
+                return true;
+            }
+
+            // ---------- JUROS COMPOSTOS (COM PERÍODO: aa, am, ad) ----------
+            let jurosCompMatch = expr.match(/^(?:juroscomposto|jc)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)%\s+(aa|am|ad)\s+(\d+(?:\.\d+)?)$/i);
+            if (jurosCompMatch) {
+                let capital = parseFloat(jurosCompMatch[1]);
+                let taxa = parseFloat(jurosCompMatch[2]) / 100;
+                let unidade = jurosCompMatch[3].toLowerCase();
+                let tempo = parseFloat(jurosCompMatch[4]);
+                
+                let unidadeTexto = { aa: 'ano(s)', am: 'mês(es)', ad: 'dia(s)' }[unidade];
+                let montante = capital * Math.pow(1 + taxa, tempo);
+                let juros = montante - capital;
+                
+                sendSystemMessage(`💰 Juros Compostos (${taxa*100}% ao ${unidadeTexto}):
+            Capital: ${capital}
+            Taxa: ${taxa*100}% ao ${unidadeTexto}
+            Tempo: ${tempo} ${unidadeTexto}
+            Montante: ${montante.toFixed(2)}
+            Juros: ${juros.toFixed(2)}`);
+                return true;
+            }
+
+            // ---------- CONVERSÕES DE UNIDADE ----------
+            // Regex corrigida: agora aceita "para", "em", "pra" ou nada entre as unidades
+            let convertMatch = expr.match(/^([\d\.]+)\s+([a-z]+)\s+(?:para|em|pra)?\s*([a-z]+)$/i);
+            if (convertMatch) {
+                let value = parseFloat(convertMatch[1]);
+                let from = convertMatch[2].toLowerCase();
+                let to = convertMatch[3].toLowerCase();
+                result = convertUnits(value, from, to);
+                if (result === null) {
+                    sendSystemMessage(`❌ Conversão de "${from}" para "${to}" não suportada.`);
+                } else {
+                    sendSystemMessage(`🔄 ${value} ${from} = ${result} ${to}`);
+                }
+                return true;
+            }
+
+            // ---------- PORCENTAGEM EM CADEIA (20% de 30% de 500) ----------
+            let chainMatch = expr.match(/^(\d+(?:\.\d+)?)%\s+de\s+(\d+(?:\.\d+)?)%\s+de\s+(\d+(?:\.\d+)?)$/);
+            if (chainMatch) {
+                let val = parseFloat(chainMatch[3]);
+                val = (parseFloat(chainMatch[2]) / 100) * val;
+                val = (parseFloat(chainMatch[1]) / 100) * val;
+                result = val;
+                sendSystemMessage(`📊 ${expr} = ${result}`);
+                return true;
+            }
+
+            // ---------- PORCENTAGEM SIMPLES: X% de Y ----------
+            let simplePercent = expr.match(/^(\d+(?:\.\d+)?)%\s+de\s+(\d+(?:\.\d+)?)$/);
+            if (simplePercent) {
+                let p = parseFloat(simplePercent[1]);
+                let v = parseFloat(simplePercent[2]);
+                result = (p / 100) * v;
+                sendSystemMessage(`📊 ${p}% de ${v} = ${result}`);
+                return true;
+            }
+
+            // ---------- OPERAÇÃO COM PORCENTAGEM (5% + 10% de 100) ----------
+            let opPercent = expr.match(/^(\d+(?:\.\d+)?)%\s*([+\-*/])\s*(\d+(?:\.\d+)?)%\s+de\s+(\d+(?:\.\d+)?)$/);
+            if (opPercent) {
+                let p1 = parseFloat(opPercent[1]) / 100;
+                let op = opPercent[2];
+                let p2 = parseFloat(opPercent[3]) / 100;
+                let base = parseFloat(opPercent[4]);
+                let v1 = p1 * base;
+                let v2 = p2 * base;
+                if (op === '+') result = v1 + v2;
+                else if (op === '-') result = v1 - v2;
+                else if (op === '*') result = v1 * v2;
+                else if (op === '/') result = v2 !== 0 ? v1 / v2 : 'Erro';
+                sendSystemMessage(`📊 ${p1*100}% ${op} ${p2*100}% de ${base} = ${result}`);
+                return true;
+            }
+
+            // ---------- ARITMÉTICA BÁSICA COM math.js (sem sin/cos/log) ----------
+            let mathExpr = expr
+                .replace(/(\d+(?:\.\d+)?)%/g, (_, p) => `(${p}/100)`)
+                .replace(/\^/g, '**')
+                .replace(/raiz\(/g, 'sqrt(')
+                .replace(/√\(/g, 'sqrt(');
+
+            // Permite apenas caracteres seguros
+            if (!/^[\d\s+\-*/%^().,eEraiz√sqrtabs]+$/i.test(mathExpr)) {
+                sendSystemMessage(`❌ Expressão inválida. Use apenas números, operadores + - * / ^ ( ) e %.`);
+                return true;
+            }
+            result = math.evaluate(mathExpr);
+
+            if (typeof result === 'number') {
+                if (Math.abs(result) > 1e12 || (Math.abs(result) < 0.001 && result !== 0)) {
+                    result = result.toExponential(6);
+                } else {
+                    result = parseFloat(result.toFixed(8)).toString();
+                }
+            }
+            sendSystemMessage(`🧮 **${escapeHtml(expr)}** = \`${result}\``);
+
         } catch (e) {
-            sendSystemMessage(`❌ Erro ao buscar clima. Verifique sua chave da API.`);
+            sendSystemMessage(`❌ Erro: ${e.message}\n\nUse números e operadores válidos.`);
         }
         return true;
     }
@@ -2843,6 +2920,148 @@ async function processGeneralCommands(content) {
 
 
     
+}
+
+
+// ========== CONVERSOR DE UNIDADES (VERSÃO CORRIGIDA) ==========
+function convertUnits(value, from, to) {
+    // Normaliza unidades (plurais, acentos, sinônimos)
+    const normalize = (unit) => {
+        let u = unit.toLowerCase().trim();
+        // Remove acentos simples
+        u = u.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        // Plurais e variações
+        const map = {
+            'metro': 'm', 'metros': 'm', 'm': 'm',
+            'centimetro': 'cm', 'centimetros': 'cm', 'cm': 'cm',
+            'milimetro': 'mm', 'milimetros': 'mm', 'mm': 'mm',
+            'quilometro': 'km', 'quilometros': 'km', 'km': 'km',
+            'milha': 'mi', 'milhas': 'mi', 'mi': 'mi',
+            'pe': 'ft', 'pes': 'ft', 'ft': 'ft',
+            'polegada': 'in', 'polegadas': 'in', 'in': 'in',
+            'jarda': 'yd', 'jardas': 'yd', 'yd': 'yd',
+            'kilograma': 'kg', 'kilogramas': 'kg', 'quilo': 'kg', 'quilos': 'kg', 'kg': 'kg',
+            'grama': 'g', 'gramas': 'g', 'g': 'g',
+            'libra': 'lb', 'libras': 'lb', 'lb': 'lb',
+            'onca': 'oz', 'oncas': 'oz', 'oz': 'oz',
+            'litro': 'l', 'litros': 'l', 'l': 'l',
+            'mililitro': 'ml', 'mililitros': 'ml', 'ml': 'ml',
+            'galao': 'gal', 'galoes': 'gal', 'gal': 'gal',
+            'metroquadrado': 'm2', 'metrosquadrados': 'm2', 'm2': 'm2',
+            'hectare': 'ha', 'hectares': 'ha', 'ha': 'ha',
+            'alqueire': 'alq', 'alqueires': 'alq', 'alq': 'alq',
+            'acre': 'ac', 'acres': 'ac', 'ac': 'ac',
+            'horas': 'h', 'hora': 'h', 'h': 'h',
+            'minutos': 'min', 'minuto': 'min', 'min': 'min',
+            'segundos': 's', 'segundo': 's', 's': 's',
+            'dia': 'd', 'dias': 'd', 'd': 'd',
+            'semana': 'sem', 'semanas': 'sem', 'sem': 'sem',
+            'mes': 'mes', 'meses': 'mes', 'mes': 'mes',
+            'celsius': 'c', 'centigrado': 'c', 'c': 'c',
+            'fahrenheit': 'f', 'f': 'f',
+            'kelvin': 'k', 'k': 'k',
+            'kilometrosporhora': 'kmh', 'km/h': 'kmh', 'kmh': 'kmh',
+            'metrosporsegundo': 'ms', 'm/s': 'ms', 'ms': 'ms',
+            'milhasporhora': 'mph', 'mph': 'mph',
+            'noh': 'kt', 'nos': 'kt', 'kt': 'kt',
+            'kilowatt hora': 'kwh', 'kwh': 'kwh',
+            'btu': 'btu',
+            'caloria': 'cal', 'calorias': 'cal', 'cal': 'cal',
+            'psi': 'psi',
+            'bar': 'bar',
+            'atmosfera': 'atm', 'atm': 'atm',
+            'byte': 'b', 'bytes': 'b', 'b': 'b',
+            'kilobyte': 'kb', 'kb': 'kb',
+            'megabyte': 'mb', 'mb': 'mb',
+            'gigabyte': 'gb', 'gb': 'gb',
+            'terabyte': 'tb', 'tb': 'tb',
+            'megabitsporsegundo': 'mbps', 'mbps': 'mbps',
+            'gigabitsporsegundo': 'gbps', 'gbps': 'gbps'
+        };
+        return map[u] || u;
+    };
+    
+    from = normalize(from);
+    to = normalize(to);
+    
+    // Tabela de conversão (igual à anterior, com as unidades normalizadas)
+    const conversions = {
+        // Distância
+        'km': { 'm': 1000, 'cm': 100000, 'mm': 1e6, 'mi': 0.621371, 'ft': 3280.84, 'in': 39370.1, 'yd': 1093.61 },
+        'm':  { 'km': 0.001, 'cm': 100, 'mm': 1000, 'mi': 0.000621371, 'ft': 3.28084, 'in': 39.3701, 'yd': 1.09361 },
+        'cm': { 'm': 0.01, 'km': 0.00001, 'mm': 10, 'mi': 0.0000062137, 'ft': 0.0328084, 'in': 0.393701 },
+        'mm': { 'cm': 0.1, 'm': 0.001, 'km': 0.000001, 'in': 0.0393701, 'ft': 0.00328084 },
+        'mi': { 'km': 1.60934, 'm': 1609.34, 'ft': 5280, 'yd': 1760 },
+        'ft': { 'm': 0.3048, 'cm': 30.48, 'km': 0.0003048, 'in': 12 },
+        'in': { 'cm': 2.54, 'mm': 25.4, 'm': 0.0254, 'ft': 0.0833333 },
+        'yd': { 'm': 0.9144, 'ft': 3, 'in': 36 },
+        // Massa
+        'kg': { 'g': 1000, 'lb': 2.20462, 'oz': 35.274 },
+        'g':  { 'kg': 0.001, 'lb': 0.00220462, 'oz': 0.035274 },
+        'lb': { 'kg': 0.453592, 'g': 453.592, 'oz': 16 },
+        'oz': { 'g': 28.3495, 'kg': 0.0283495, 'lb': 0.0625 },
+        // Volume
+        'l':  { 'ml': 1000, 'gal': 0.264172, 'm3': 0.001 },
+        'ml': { 'l': 0.001, 'm3': 0.000001, 'gal': 0.000264172 },
+        'gal':{ 'l': 3.78541, 'ml': 3785.41 },
+        'm3': { 'l': 1000, 'ml': 1e6, 'gal': 264.172 },
+        // Área
+        'm2': { 'km2': 0.000001, 'ha': 0.0001, 'alq': 0.000247105, 'ft2': 10.7639, 'ac': 0.000247105 },
+        'km2':{ 'm2': 1e6, 'ha': 100, 'alq': 247.105, 'ac': 247.105 },
+        'ha': { 'm2': 10000, 'km2': 0.01, 'alq': 2.47105, 'ac': 2.47105 },
+        'alq':{ 'm2': 40468.6, 'km2': 0.00404686, 'ha': 0.404686, 'ac': 1 },
+        'ac': { 'm2': 4046.86, 'km2': 0.00404686, 'ha': 0.404686, 'alq': 1 },
+        // Velocidade
+        'kmh':{ 'ms': 0.277778, 'mph': 0.621371, 'kt': 0.539957 },
+        'ms': { 'kmh': 3.6, 'mph': 2.23694, 'kt': 1.94384 },
+        'mph':{ 'kmh': 1.60934, 'ms': 0.44704, 'kt': 0.868976 },
+        'kt': { 'kmh': 1.852, 'ms': 0.514444 },
+        // Temperatura
+        'c':{ 'f': (v) => (v * 9/5) + 32, 'k': (v) => v + 273.15 },
+        'f':{ 'c': (v) => (v - 32) * 5/9, 'k': (v) => (v - 32) * 5/9 + 273.15 },
+        'k':{ 'c': (v) => v - 273.15, 'f': (v) => (v - 273.15) * 9/5 + 32 },
+        // Tempo (agora com 'd', 'sem', 'mes')
+        'h': { 'min': 60, 's': 3600, 'd': 1/24, 'sem': 1/168, 'mes': 1/720 },
+        'min':{ 'h': 1/60, 's': 60, 'd': 1/1440 },
+        's': { 'min': 1/60, 'h': 1/3600, 'd': 1/86400 },
+        'd': { 'h': 24, 'min': 1440, 's': 86400, 'sem': 1/7, 'mes': 1/30.44 },
+        'sem':{ 'd': 7, 'h': 168, 'min': 10080, 's': 604800 },
+        'mes':{ 'd': 30.44, 'h': 730.5, 'min': 43830, 's': 2.63e6 },
+        // Energia
+        'kwh':{ 'btu': 3412.14, 'cal': 860421, 'j': 3.6e6 },
+        'btu':{ 'kwh': 0.000293071, 'cal': 251.996, 'j': 1055.06 },
+        'cal':{ 'kwh': 1.162e-6, 'btu': 0.00396832, 'j': 4.184 },
+        // Pressão
+        'psi':{ 'bar': 0.0689476, 'atm': 0.068046, 'kpa': 6.89476 },
+        'bar':{ 'psi': 14.5038, 'atm': 0.986923, 'kpa': 100 },
+        'atm':{ 'psi': 14.6959, 'bar': 1.01325, 'kpa': 101.325 },
+        // Dados
+        'b':  { 'kb': 0.001, 'mb': 1e-6, 'gb': 1e-9, 'tb': 1e-12 },
+        'kb': { 'b': 1000, 'mb': 0.001, 'gb': 1e-6, 'tb': 1e-9 },
+        'mb': { 'b': 1e6, 'kb': 1000, 'gb': 0.001, 'tb': 1e-6 },
+        'gb': { 'b': 1e9, 'kb': 1e6, 'mb': 1000, 'tb': 0.001 },
+        'tb': { 'b': 1e12, 'kb': 1e9, 'mb': 1e6, 'gb': 1000 },
+        'mbps':{ 'gbps': 0.001, 'kbps': 1000, 'bps': 1e6 },
+        'gbps':{ 'mbps': 1000, 'kbps': 1e6, 'bps': 1e9 }
+    };
+    
+    // Casos especiais (grama <-> litro para água)
+    if (from === 'g' && to === 'l') return value / 1000;
+    if (from === 'l' && to === 'g') return value * 1000;
+    
+    // Conversão direta
+    if (conversions[from] && conversions[to] !== undefined) {
+        const factor = conversions[from][to];
+        if (typeof factor === 'function') return factor(value);
+        return value * factor;
+    }
+    // Conversão inversa (se a tabela tiver de to para from)
+    if (conversions[to] && conversions[from] !== undefined) {
+        const factor = conversions[to][from];
+        if (typeof factor === 'function') return factor(value);
+        return value / factor;
+    }
+    return null;
 }
 
 
@@ -2926,27 +3145,42 @@ function cmdHelp() {
                         <div class="help-cat-title">🏆 Informação</div>
                         <div class="help-cmd"><span class="cmd">/hora</span> – Data/hora atual</div>
                         <div class="help-cmd"><span class="cmd">/ranking</span> – Top 10 mensagens da semana</div>
+                        <div class="help-cmd"><span class="cmd">/crypto btc</span> – Cotação de criptomoeda (BTC, ETH, etc)</div>
+                        <div class="help-cmd"><span class="cmd">/dolar</span> – Cotação do dólar comercial</div>
+                        <div class="help-cmd"><span class="cmd">/quote</span> – Frase motivacional aleatória</div>
+                    </div>
+                    <div class="help-category">
+                        <div class="help-cat-title">🎮 Jogos</div>
+                        <div class="help-cmd"><span class="cmd">/rps pedra</span> – Jogue pedra, papel ou tesoura</div>
+                    </div>
+                    <div class="help-category">
+                        <div class="help-cat-title">🧮 Calculadora /calc</div>
+                        <div class="help-cmd"><span class="cmd">/calc 2+2*3</span> – Aritmética básica (+, -, *, /, ^, raiz)</div>
+                        <div class="help-cmd"><span class="cmd">/calc 10% de 200</span> – Porcentagem simples</div>
+                        <div class="help-cmd"><span class="cmd">/calc 5% + 10% de 100</span> – Operações com porcentagem</div>
+                        <div class="help-cmd"><span class="cmd">/calc 20% de 30% de 500</span> – Porcentagem em cadeia</div>
+                        <div class="help-cmd"><span class="cmd">/calc 100km para m</span> – Conversão de unidades (km,m,kg,g,l,ml,h,min,dias,semanas,°C,°F, etc)</div>
+                        <div class="help-cmd"><span class="cmd">/calc 500g para l</span> – Gramas para litros (água)</div>
+                        <div class="help-cmd"><span class="cmd">/calc 3 10 6 x</span> – Regra de três simples</div>
+                        <div class="help-cmd"><span class="cmd">/calc juros 1000 5% 12</span> – Juros simples (capital, taxa, tempo)</div>
+                        <div class="help-cmd"><span class="cmd">/calc jc 1000 5% am 12</span> – Juros compostos (aa=ano, am=mês, ad=dia)</div>
+                        <div class="help-cmd"><span class="cmd">/converter 100km para m</span> – Atalho para conversões</div>
+                        <div class="help-examples" style="margin-top:6px; color:#9ca3af; font-size:12px;">
+                            💡 Exemplo: /calc 2 semanas para dias → 14 dias
+                        </div>
                     </div>
                     <div class="help-category">
                         <div class="help-cat-title">🛡️ Moderação (admin/supervisor)</div>
                         <div class="help-cmd"><span class="cmd">/clear_sys</span> – Apaga mensagens do robô</div>
                         <div class="help-cmd"><span class="cmd">/clear</span> – Apaga TODO o chat (cuidado!)</div>
+                        <div class="help-cmd"><span class="cmd">/addgif nome URL</span> – Cadastra novo GIF (admin/supervisor/moderador)</div>
+                        <div class="help-cmd"><span class="cmd">/rankingsend</span> – Envia ranking no chat</div>
                     </div>
                     <div class="help-category">
                         <div class="help-cat-title">✨ Formatação</div>
                         <div class="help-cmd"><span class="cmd">**negrito**</span> <span class="cmd">*itálico*</span> <span class="cmd">__sublinhado__</span> <span class="cmd">~~riscado~~</span></div>
-                        <div class="help-cmd">Links são automaticamente azuis e clicáveis 🔗</div>
-                    </div>
-
-                    <div class="help-category">
-                        <div class="help-cat-title">📈 Cotações</div>
-                        <div class="help-cmd"><span class="cmd">/crypto btc</span> – Preço de criptomoeda (BTC, ETH...)</div>
-                        <div class="help-cmd"><span class="cmd">/dolar</span> – Cotação do dólar comercial</div>
-                    </div>
-                    <div class="help-category">
-                        <div class="help-cat-title">🎲 Mais Diversão</div>
-                        <div class="help-cmd"><span class="cmd">/quote</span> – Frase motivacional</div>
-                        <div class="help-cmd"><span class="cmd">/rps pedra</span> – Jogue pedra, papel ou tesoura</div>
+                        <div class="help-cmd">Links são automaticamente clicáveis 🔗</div>
+                        <div class="help-cmd">Use @usuario para mencionar e notificar alguém</div>
                     </div>
                 </div>
                 <div class="help-footer">
