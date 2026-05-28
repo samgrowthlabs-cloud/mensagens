@@ -185,35 +185,70 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupEventListeners();
 
     // ========== PAINEL DE GIFS ==========
-    const gifPickerPanel = document.createElement('div');
-    gifPickerPanel.id = 'gifPickerPanel';
-    gifPickerPanel.className = 'gif-picker-panel';
-    gifPickerPanel.innerHTML = '<div class="gif-picker-grid" id="gifPickerGrid"></div>';
-    const inputContainer = document.querySelector('.geral-input-container');
-    if (inputContainer) inputContainer.appendChild(gifPickerPanel);
+    // ========== PAINEL DE GIFS COM PESQUISA ==========
+const gifPickerPanel = document.createElement('div');
+gifPickerPanel.id = 'gifPickerPanel';
+gifPickerPanel.className = 'gif-picker-panel';
+gifPickerPanel.innerHTML = `
+    <div class="gif-picker-search">
+        <input type="text" id="gifSearchInput" placeholder="🔍 Pesquisar GIF... (ex: meme, risada, etc)" autocomplete="off">
+    </div>
+    <div class="gif-picker-grid" id="gifPickerGrid"></div>
+`;
+const inputContainerGif = document.querySelector('.geral-input-container');
+if (inputContainerGif) inputContainerGif.appendChild(gifPickerPanel);
 
-    const gifBtn = document.getElementById('gifPickerBtn');
+const gifBtn = document.getElementById('gifPickerBtn');
+const gifGrid = document.getElementById('gifPickerGrid');
+const searchInput = document.getElementById('gifSearchInput');
+
+function renderGifPicker(filterText = '') {
     const gifGrid = document.getElementById('gifPickerGrid');
-
-    if (gifBtn) {
-    gifBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (gifPickerPanel.classList.contains('open')) {
-        gifPickerPanel.classList.remove('open');
+    if (!gifGrid) return;
+    
+    // FORÇA O LAYOUT COM ESTILO INLINE
+    gifGrid.style.display = 'grid';
+    gifGrid.style.gridTemplateColumns = 'repeat(3, 1fr)';
+    gifGrid.style.gap = '10px';
+    gifGrid.style.padding = '12px';
+    gifGrid.style.maxHeight = '320px';
+    gifGrid.style.overflowY = 'auto';
+    gifGrid.style.backgroundColor = '#1e1e2a';
+    gifGrid.style.borderRadius = '0 0 20px 20px';
+    gifGrid.style.boxSizing = 'border-box';
+    
+    gifGrid.innerHTML = '';
+    const commands = Object.entries(memeCommands);
+    let filteredCommands = commands;
+    
+    if (filterText.trim() !== '') {
+        const lowerFilter = filterText.trim().toLowerCase();
+        filteredCommands = commands.filter(([cmd]) => 
+            cmd.toLowerCase().includes(lowerFilter) || 
+            cmd.substring(1).toLowerCase().includes(lowerFilter)
+        );
+    }
+    
+    if (filteredCommands.length === 0) {
+        gifGrid.innerHTML = '<div class="gif-picker-empty" style="grid-column:1/-1;text-align:center;padding:40px;color:#aaa;">Nenhum GIF encontrado 😢</div>';
         return;
-        }
-        gifGrid.innerHTML = '';
-        const commands = Object.entries(memeCommands);
-        if (commands.length === 0) {
-        gifGrid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:20px;color:#aaa">Nenhum GIF cadastrado</div>';
-        } else {
-        commands.forEach(([cmd, url]) => {
-            const item = document.createElement('div');
-            item.className = 'gif-picker-item';
-            item.title = cmd;
-            item.innerHTML = `<img src="${escapeHtml(url)}" alt="${escapeHtml(cmd)}" loading="lazy" 
+    }
+    
+    filteredCommands.forEach(([cmd, url]) => {
+        const item = document.createElement('div');
+        item.className = 'gif-picker-item';
+        // ESTILO INLINE NO ITEM
+        item.style.aspectRatio = '1 / 1';
+        item.style.cursor = 'pointer';
+        item.style.borderRadius = '12px';
+        item.style.overflow = 'hidden';
+        item.style.backgroundColor = '#0a0a0c';
+        item.style.border = '1px solid #2a2a3a';
+        item.style.transition = 'transform 0.1s';
+        item.title = cmd;
+        item.innerHTML = `<img src="${escapeHtml(url)}" alt="${escapeHtml(cmd)}" style="width:100%;height:100%;object-fit:cover;display:block;" loading="lazy" 
             onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2260%22 height=%2260%22%3E%3Crect fill=%22%23333%22 width=%2260%22 height=%2260%22/%3E%3Ctext x=%2230%22 y=%2235%22 fill=%22%23ccc%22 text-anchor=%22middle%22 font-size=%2212%22%3E?%3C/text%3E%3C/svg%3E';">`;
-            item.addEventListener('click', (ev) => {
+        item.addEventListener('click', (ev) => {
             ev.stopPropagation();
             const input = document.getElementById('geralMessageInput');
             const cmdName = cmd.substring(1);
@@ -225,14 +260,55 @@ document.addEventListener('DOMContentLoaded', async () => {
             input.selectionStart = input.selectionEnd = cursorPos + gifCommand.length + 1;
             input.focus();
             input.dispatchEvent(new Event('input', { bubbles: true }));
-            gifPickerPanel.classList.remove('open');
-            });
-            gifGrid.appendChild(item);
+            document.getElementById('gifPickerPanel').classList.remove('open');
+            document.getElementById('gifSearchInput').value = '';
         });
-        }
-        gifPickerPanel.classList.add('open');
+        // Hover com JS (opcional)
+        item.addEventListener('mouseenter', () => {
+            item.style.transform = 'scale(1.02)';
+            item.style.borderColor = '#8b5cf6';
+        });
+        item.addEventListener('mouseleave', () => {
+            item.style.transform = 'scale(1)';
+            item.style.borderColor = '#2a2a3a';
+        });
+        gifGrid.appendChild(item);
     });
+}
+
+// Evento de pesquisa em tempo real
+if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+        renderGifPicker(e.target.value);
+    });
+}
+
+// Abrir/fechar painel
+if (gifBtn) {
+    gifBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (gifPickerPanel.classList.contains('open')) {
+            gifPickerPanel.classList.remove('open');
+            searchInput.value = ''; // limpa ao fechar
+            return;
+        }
+        renderGifPicker(''); // carrega todos os GIFs
+        gifPickerPanel.classList.add('open');
+        searchInput.focus(); // foca na pesquisa
+    });
+}
+
+// Fechar ao clicar fora
+document.addEventListener('click', (e) => {
+    if (!gifPickerPanel.contains(e.target) && e.target !== gifBtn) {
+        gifPickerPanel.classList.remove('open');
     }
+});
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && gifPickerPanel.classList.contains('open')) {
+        gifPickerPanel.classList.remove('open');
+    }
+});
 
     document.addEventListener('click', (e) => {
     if (!gifPickerPanel.contains(e.target) && e.target !== gifBtn) {

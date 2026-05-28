@@ -2146,3 +2146,114 @@ body {
 #dismissNotifyBtn {
     background: #2a2a3a;
 }
+
+.gif-picker-panel {
+    position: absolute;
+    bottom: 70px;
+    right: 0;
+    width: 380px;
+    max-width: 90vw;
+    background: #1e1e2a;
+    border-radius: 20px;
+    border: 1px solid #2a2a3a;
+    z-index: 1000;
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+}
+
+.gif-picker-panel.open {
+    display: flex;
+}
+
+/* Barra de pesquisa */
+.gif-picker-search {
+    padding: 12px;
+    background: #0f0f15;
+    border-bottom: 1px solid #2a2a3a;
+}
+
+.gif-picker-search input {
+    width: 100%;
+    padding: 10px;
+    background: #0a0a0c;
+    border: 1px solid #2a2a3a;
+    border-radius: 30px;
+    color: white;
+    font-size: 14px;
+    box-sizing: border-box;
+}
+
+/* Container dos GIFs - USANDO FLEXBOX COM WRAP */
+.gif-picker-grid {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 10px !important;
+    padding: 12px !important;
+    max-height: 320px;
+    overflow-y: auto;
+    background: #1e1e2a;
+    box-sizing: border-box;
+}
+
+/* Cada item ocupa 1/3 da largura (menos o gap) */
+.gif-picker-item {
+    width: calc(33.33% - 7px) !important; /* 3 itens por linha */
+    aspect-ratio: 1 / 1 !important;
+    cursor: pointer;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #0a0a0c;
+    border: 1px solid #2a2a3a;
+    transition: transform 0.1s;
+    box-sizing: border-box;
+}
+
+.gif-picker-item:hover {
+    transform: scale(1.02);
+    border-color: #8b5cf6;
+}
+
+.gif-picker-item img {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover;
+    display: block;
+}
+
+/* Mensagem de vazio */
+.gif-picker-empty {
+    width: 100%;
+    text-align: center;
+    padding: 40px;
+    color: #aaa;
+}
+
+/* Responsivo: no celular, 2 itens por linha */
+@media (max-width: 600px) {
+    .gif-picker-panel {
+        width: calc(100vw - 20px);
+        left: 10px;
+        right: 10px;
+        bottom: 80px;
+    }
+    .gif-picker-item {
+        width: calc(50% - 5px) !important; /* 2 itens por linha */
+    }
+    .gif-picker-grid {
+        gap: 8px !important;
+        max-height: 280px;
+    }
+}
+
+/* Telas muito pequenas */
+@media (max-width: 400px) {
+    .gif-picker-grid {
+        gap: 6px !important;
+        padding: 8px !important;
+    }
+    .gif-picker-item {
+        width: calc(50% - 3px) !important;
+    }
+}
