@@ -1771,19 +1771,30 @@ function setupRealtimeSubscriptions() {
                 // Verifica menção
                 const mentions = msg.mentions || [];
                 if (mentions.includes(currentUser.id)) {
-                    const sender = allUsers[msg.user_id]?.username || 'Alguém';
-                    // Notifica mesmo com página ativa? Não, só se background.
+                    const sender = allUsers[msg.user_id];
+                    const senderName = sender?.username || 'Alguém';
+                    let senderAvatar = sender?.avatar_url;
+                    
+                    // Converte URL relativa para absoluta (se necessário)
+                    if (senderAvatar && senderAvatar.startsWith('/')) {
+                        senderAvatar = window.location.origin + senderAvatar;
+                    }
+                    // Se não tiver avatar, usa um ícone padrão (opcional)
+                    if (!senderAvatar) {
+                        senderAvatar = '/favicon-192.png'; // ou deixe null
+                    }
+                    
                     if (document.hidden) {
                         showNotification(
-                            `🔔 ${sender} mencionou você`,
+                            `🔔 ${senderName} mencionou você`,
                             msg.content.length > 100 ? msg.content.substring(0, 100) + '...' : msg.content,
-                            allUsers[msg.user_id]?.avatar_url,
+                            senderAvatar,
                             { url: '/mensagem_geral/index.html' }
                         );
                     }
                 }
                 
-                // Renderiza mensagem (já faz)
+                // Renderiza mensagem
                 renderMessage(msg);
             }
         )
