@@ -766,6 +766,427 @@ section {
 }
 
 
+/* ============================================
+   MODAL DE UPLOAD DE GIFS (PREMIUM)
+   ============================================ */
+
+.meme-upload-modal {
+  max-width: 540px;
+  width: 95%;
+  background: linear-gradient(160deg, #12121a 0%, #1a1a24 100%);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 28px;
+  padding: 0;
+  overflow: hidden;
+  box-shadow: 0 32px 64px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+  animation: modalSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+}
+
+@keyframes modalSlideUp {
+  from { opacity: 0; transform: translateY(24px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.modal-close-btn {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  z-index: 10;
+}
+.modal-close-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+/* Cabeçalho do modal */
+.meme-modal-header {
+  text-align: center;
+  padding: 32px 28px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.meme-modal-icon {
+  font-size: 48px;
+  margin-bottom: 12px;
+  filter: drop-shadow(0 4px 8px rgba(0,0,0,0.3));
+}
+
+.meme-modal-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: #f0f0f0;
+  margin: 0 0 6px;
+  letter-spacing: -0.3px;
+}
+
+.meme-modal-subtitle {
+  font-size: 13px;
+  color: var(--text-tertiary);
+  margin: 0;
+}
+
+/* Corpo do modal */
+.meme-modal-body {
+  padding: 24px 28px;
+}
+
+.meme-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-tertiary);
+  margin-bottom: 8px;
+  display: block;
+}
+
+/* Campo de comando */
+.meme-command-group {
+  margin-bottom: 24px;
+}
+
+.meme-command-input-wrapper {
+  display: flex;
+  align-items: center;
+  background: rgba(10, 10, 15, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  overflow: hidden;
+  transition: all 0.2s;
+}
+.meme-command-input-wrapper:focus-within {
+  border-color: #8b5cf6;
+  box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.1);
+}
+
+.meme-command-prefix {
+  padding: 0 0 0 16px;
+  font-size: 18px;
+  font-weight: 600;
+  color: #8b5cf6;
+  user-select: none;
+}
+
+.meme-command-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  padding: 14px 16px 14px 4px;
+  color: #f0f0f0;
+  font-size: 15px;
+  font-family: inherit;
+  outline: none;
+}
+.meme-command-input::placeholder {
+  color: #444;
+}
+
+/* Área de upload */
+.meme-upload-area {
+  position: relative;
+  border: 2px dashed rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 28px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: rgba(255, 255, 255, 0.01);
+  min-height: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.meme-upload-area:hover,
+.meme-upload-area.drag-over {
+  border-color: #8b5cf6;
+  background: rgba(139, 92, 246, 0.04);
+}
+
+.meme-upload-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.meme-upload-icon {
+  color: #8b5cf6;
+  opacity: 0.8;
+}
+
+.meme-upload-text {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.meme-upload-link {
+  color: #c4b5fd;
+  font-weight: 500;
+  cursor: pointer;
+}
+.meme-upload-link:hover {
+  text-decoration: underline;
+}
+
+.meme-upload-hint {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin: 0;
+}
+
+.meme-upload-preview {
+  max-width: 200px;
+  max-height: 120px;
+  border-radius: 12px;
+  object-fit: cover;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+}
+
+.meme-upload-remove {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(239, 68, 68, 0.9);
+  border: none;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  z-index: 5;
+}
+.meme-upload-remove:hover {
+  background: #ef4444;
+  transform: scale(1.1);
+}
+
+/* Separador */
+.meme-divider {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 24px 0;
+}
+
+.meme-divider::before,
+.meme-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.meme-divider-text {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* Campo de URL */
+.meme-url-input {
+  width: 100%;
+  background: rgba(10, 10, 15, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 14px 16px;
+  color: #f0f0f0;
+  font-size: 14px;
+  outline: none;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+.meme-url-input:focus {
+  border-color: #8b5cf6;
+  box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.1);
+}
+.meme-url-input::placeholder {
+  color: #444;
+}
+
+/* Rodapé do modal */
+.meme-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 20px 28px;
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.meme-btn-cancel {
+  padding: 12px 22px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.meme-btn-cancel:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: #fff;
+}
+
+.meme-btn-save {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+  color: white;
+  border: none;
+  border-radius: 14px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 4px 12px rgba(124, 58, 237, 0.3);
+}
+.meme-btn-save:hover {
+  background: linear-gradient(135deg, #9d6ff7, #8b5cf6);
+  box-shadow: 0 6px 18px rgba(124, 58, 237, 0.4);
+  transform: translateY(-1px);
+}
+.meme-btn-save:active {
+  transform: translateY(0);
+}
+
+/* Tabela de memes melhorada */
+#memesTable {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 6px;
+}
+#memesTable th {
+  text-align: left;
+  padding: 10px 16px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  font-weight: 600;
+}
+#memesTable td {
+  padding: 12px 16px;
+  background: rgba(20, 20, 28, 0.5);
+  border-radius: 0;
+  vertical-align: middle;
+  border-top: 1px solid rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+#memesTable td:first-child {
+  border-radius: 12px 0 0 12px;
+  border-left: 1px solid rgba(255, 255, 255, 0.03);
+}
+#memesTable td:last-child {
+  border-radius: 0 12px 12px 0;
+  border-right: 1px solid rgba(255, 255, 255, 0.03);
+}
+#memesTable tr:hover td {
+  background: rgba(139, 92, 246, 0.04);
+}
+
+.meme-thumb {
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  object-fit: cover;
+  background: #1a1a1a;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* ===== MODAL DE GIF NO MOBILE ===== */
+@media (max-width: 600px) {
+  .meme-upload-modal {
+    max-width: 95vw !important;
+    border-radius: 20px !important;
+    padding: 0 !important;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+
+  .meme-modal-header {
+    padding: 20px 16px 16px !important;
+  }
+
+  .meme-modal-icon {
+    font-size: 32px !important;
+  }
+
+  .meme-modal-title {
+    font-size: 18px !important;
+  }
+
+  .meme-modal-subtitle {
+    font-size: 12px !important;
+  }
+
+  .meme-modal-body {
+    padding: 16px !important;
+  }
+
+  .meme-command-input-wrapper,
+  .meme-url-input {
+    padding: 12px 14px !important;
+    font-size: 14px !important;
+  }
+
+  .meme-upload-area {
+    padding: 20px 12px !important;
+    min-height: 100px !important;
+  }
+
+  .meme-upload-text {
+    font-size: 13px !important;
+  }
+
+  .meme-upload-hint {
+    font-size: 11px !important;
+  }
+
+  .meme-modal-footer {
+    flex-direction: column-reverse !important;
+    gap: 8px !important;
+    padding: 16px !important;
+  }
+
+  .meme-btn-cancel,
+  .meme-btn-save {
+    width: 100% !important;
+    justify-content: center !important;
+    padding: 12px !important;
+    font-size: 14px !important;
+  }
+
+  .modal-close-btn {
+    top: 8px !important;
+    right: 8px !important;
+    width: 32px !important;
+    height: 32px !important;
+  }
+}
 
 
 .col-checkbox.hidden { display: none; }

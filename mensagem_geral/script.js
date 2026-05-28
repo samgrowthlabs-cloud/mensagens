@@ -13,6 +13,14 @@ let geralChannel = null;
 let pinnedChannel = null;
 let onlineInterval = null;
 let memeCommands = {};               // Será preenchido do banco
+// Container de sugestões de menção
+const mentionSuggestions = document.createElement('div');
+mentionSuggestions.id = 'mentionSuggestions';
+mentionSuggestions.className = 'mention-suggestions';
+const inputContainer = document.querySelector('.geral-input-container');
+if (inputContainer) inputContainer.appendChild(mentionSuggestions);
+let mentionFilter = '';
+let mentionSelectedIndex = 0;
 
 
 
@@ -175,6 +183,70 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Eventos
     setupEventListeners();
 
+    // ========== PAINEL DE GIFS ==========
+    const gifPickerPanel = document.createElement('div');
+    gifPickerPanel.id = 'gifPickerPanel';
+    gifPickerPanel.className = 'gif-picker-panel';
+    gifPickerPanel.innerHTML = '<div class="gif-picker-grid" id="gifPickerGrid"></div>';
+    const inputContainer = document.querySelector('.geral-input-container');
+    if (inputContainer) inputContainer.appendChild(gifPickerPanel);
+
+    const gifBtn = document.getElementById('gifPickerBtn');
+    const gifGrid = document.getElementById('gifPickerGrid');
+
+    if (gifBtn) {
+    gifBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (gifPickerPanel.classList.contains('open')) {
+        gifPickerPanel.classList.remove('open');
+        return;
+        }
+        gifGrid.innerHTML = '';
+        const commands = Object.entries(memeCommands);
+        if (commands.length === 0) {
+        gifGrid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:20px;color:#aaa">Nenhum GIF cadastrado</div>';
+        } else {
+        commands.forEach(([cmd, url]) => {
+            const item = document.createElement('div');
+            item.className = 'gif-picker-item';
+            item.title = cmd;
+            item.innerHTML = `<img src="${escapeHtml(url)}" alt="${escapeHtml(cmd)}" loading="lazy" 
+            onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2260%22 height=%2260%22%3E%3Crect fill=%22%23333%22 width=%2260%22 height=%2260%22/%3E%3Ctext x=%2230%22 y=%2235%22 fill=%22%23ccc%22 text-anchor=%22middle%22 font-size=%2212%22%3E?%3C/text%3E%3C/svg%3E';">`;
+            item.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            const input = document.getElementById('geralMessageInput');
+            const cmdName = cmd.substring(1);
+            const gifCommand = `/gif ${cmdName}`;
+            const cursorPos = input.selectionStart;
+            const textBefore = input.value.substring(0, cursorPos);
+            const textAfter = input.value.substring(cursorPos);
+            input.value = textBefore + gifCommand + ' ' + textAfter;
+            input.selectionStart = input.selectionEnd = cursorPos + gifCommand.length + 1;
+            input.focus();
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            gifPickerPanel.classList.remove('open');
+            });
+            gifGrid.appendChild(item);
+        });
+        }
+        gifPickerPanel.classList.add('open');
+    });
+    }
+
+    document.addEventListener('click', (e) => {
+    if (!gifPickerPanel.contains(e.target) && e.target !== gifBtn) {
+        gifPickerPanel.classList.remove('open');
+    }
+    });
+    document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && gifPickerPanel.classList.contains('open')) {
+        gifPickerPanel.classList.remove('open');
+    }
+    });
+
+
+    
+
     startOnlineCounter();
 
 
@@ -188,6 +260,17 @@ document.addEventListener('DOMContentLoaded', async () => {
             await db.from('users').update({ status: 'offline', last_seen: new Date().toISOString() }).eq('id', currentUser.id);
         }
     });
+
+
+      // Botão de rolagem para baixo
+    const messagesContainer = document.getElementById('geralMessages');
+    const scrollBtn = document.getElementById('scrollToBottomBtn');
+    
+    if (messagesContainer && scrollBtn) {
+        messagesContainer.addEventListener('scroll', toggleScrollButton);
+        scrollBtn.addEventListener('click', scrollToBottom);
+        toggleScrollButton(); // estado inicial
+    }
 });
 
 async function waitForSupabase() {
@@ -226,7 +309,10 @@ async function loadGeralMessages() {
         }
         
         messages.forEach(msg => renderMessage(msg));
-        container.scrollTop = container.scrollHeight;
+        if (isNearBottom(container)) {
+            container.scrollTop = container.scrollHeight;
+        }
+        toggleScrollButton();  // atualiza visibilidade da seta
         
         if (messages.length > 0) {
             lastMessageCheck = messages[messages.length - 1].created_at;
@@ -615,15 +701,50 @@ function setupEventListeners() {
         } else {
             hideCommandSuggestions();
         }
-    });
+    const cursorPos = input.selectionStart;
+        const textBefore = input.value.substring(0, cursorPos);
+        const atMatch = textBefore.match(/@(\w*)$/);  // @ seguido de caracteres de palavra
+        if (atMatch) {
+        const filter = atMatch[1];
+        showMentionSuggestions(filter);
+        } else {
+        hideMentionSuggestions();
+        }
+  });
     
     // Fechar sugestões ao perder foco
     input.addEventListener('blur', () => {
-        setTimeout(() => hideCommandSuggestions(), 200);
+        setTimeout(() => {
+        hideMentionSuggestions();
+        hideCommandSuggestions();
+        }, 200);
     });
     
     // Envio com Enter (sem sugestões ativas)
     input.addEventListener('keydown', (e) => {
+        const mentionOpen = mentionSuggestions.classList.contains('open');
+
+        if (mentionOpen) {
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            updateMentionSelection(1);
+            return;
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            updateMentionSelection(-1);
+            return;
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            const username = getSelectedMentionUser();
+            if (username) {
+            insertMention(username);
+            }
+            return;
+        } else if (e.key === 'Escape') {
+            hideMentionSuggestions();
+            return;
+        }
+        }
         const suggestionsDiv = document.getElementById('cmdSuggestions');
         const isSuggestionVisible = suggestionsDiv && suggestionsDiv.style.display === 'block';
         
@@ -721,8 +842,26 @@ function renderReplyPreview() {
 
 
 async function sendGeralMessage() {
+    
     const input = document.getElementById('geralMessageInput');
     const content = input.value.trim();
+
+    // 🚫 NÃO ENVIA SE ESTIVER VAZIO
+    if (!content) {
+        input.focus();   // mantém o cursor no campo
+        return;
+    }
+
+    // Verificar se usuário está mutado
+    const mutedUntil = await isUserMuted(currentUser.id);
+    if (mutedUntil) {
+        const minutesLeft = Math.ceil((mutedUntil - new Date()) / 60000);
+        showToast(`Você está mutado por mais ${minutesLeft} minuto(s). Não pode enviar mensagens.`, 'warning');
+        input.disabled = false;
+        input.focus();
+        return;
+    }
+
     // 🆕 COMANDO /gif
     if (content.toLowerCase().startsWith('/gif ')) {
         const gifName = content.substring(5).trim().toLowerCase().replace(/^\//, ''); // remove barra inicial se vier
@@ -1352,15 +1491,19 @@ async function showNotification(title, body, icon, data) {
         if (permission !== 'granted') return;
     }
     if (Notification.permission !== 'granted') return;
+    
+    // Garante que icon nunca seja null/undefined
+    const safeIcon = icon || '';
+    
     const registration = await navigator.serviceWorker.getRegistration();
     if (!registration) {
-        new Notification(title, { body, icon, data });
+        new Notification(title, { body, icon: safeIcon, data });
         return;
     }
     registration.showNotification(title, {
         body: body,
-        icon: icon || '',
-        badge: icon || '',
+        icon: safeIcon,
+        badge: safeIcon,
         tag: 'bidjorchat',
         renotify: true,
         data: data || { url: window.location.href },
@@ -1963,7 +2106,7 @@ async function processGeneralCommands(content) {
     }
 
     // /help
-    if (cmd === '/ajuda') {
+    if (cmd === '/ajuda' || cmd === '/help') {
         cmdHelp();
         return true;
     }
@@ -2359,6 +2502,153 @@ async function processGeneralCommands(content) {
         return true;
     }
 
+    //MUTED ================================================
+    if (cmd === '/mute') {
+        if (!['admin', 'supervisor', 'moderator'].includes(currentUser.role)) {
+            sendSystemMessage(`❌ Apenas administradores, supervisores e moderadores podem mutar usuários.`);
+            return true;
+        }
+        if (args.length < 1) {
+            sendSystemMessage(`❌ Use: /mute @usuario [minutos] (padrão: ${await getMuteDurationMinutes()} min)`);
+            return true;
+        }
+        const targetUsername = args[0].replace(/^@/, '');
+        const targetUser = Object.values(allUsers).find(u => u.username.toLowerCase() === targetUsername);
+        if (!targetUser) {
+            sendSystemMessage(`❌ Usuário "${targetUsername}" não encontrado.`);
+            return true;
+        }
+        if (!canModerate(targetUser, 'mute')) {
+            sendSystemMessage(`❌ Você não pode mutar ${targetUser.role === 'admin' ? 'um administrador' : targetUser.role === 'supervisor' ? 'um supervisor' : 'este usuário'}.`);
+            return true;
+        }
+        let duration = await getMuteDurationMinutes();
+        if (args.length > 1 && !isNaN(parseInt(args[1]))) {
+            duration = parseInt(args[1]);
+        }
+        const mutedUntil = new Date();
+        mutedUntil.setMinutes(mutedUntil.getMinutes() + duration);
+        try {
+            await db.from('muted_users').upsert({
+                user_id: targetUser.id,
+                muted_until: mutedUntil.toISOString(),
+                muted_by: currentUser.id,
+                reason: args.slice(2).join(' ') || 'Sem motivo'
+            });
+            await logAdminAction('USER_MUTED', { target: targetUser.username, duration });
+            sendSystemMessage(`🔇 ${currentUser.username} mutou ${targetUser.username} por ${duration} minuto(s).`);
+        } catch (e) {
+            sendSystemMessage(`❌ Erro: ${e.message}`);
+        }
+        return true;
+    }
+
+    // /unmute @usuario - Remove mute do usuário (admin/supervisor)
+    if (cmd === '/unmute') {
+        if (!['admin', 'supervisor', 'moderator'].includes(currentUser.role)) {
+            sendSystemMessage(`❌ Apenas administradores, supervisores e moderadores podem desmutar usuários.`);
+            return true;
+        }
+        if (args.length === 0) {
+            sendSystemMessage(`❌ Use: /unmute @usuario`);
+            return true;
+        }
+        const targetUsername = args[0].replace(/^@/, '');
+        const targetUser = Object.values(allUsers).find(u => u.username.toLowerCase() === targetUsername);
+        if (!targetUser) {
+            sendSystemMessage(`❌ Usuário "${targetUsername}" não encontrado.`);
+            return true;
+        }
+        if (!canModerate(targetUser, 'mute')) { // mesma regra do mute
+            sendSystemMessage(`❌ Você não pode desmutar ${targetUser.role === 'admin' ? 'um administrador' : targetUser.role === 'supervisor' ? 'um supervisor' : 'este usuário'}.`);
+            return true;
+        }
+        try {
+            const { data, error } = await db
+                .from('muted_users')
+                .select('user_id')
+                .eq('user_id', targetUser.id)
+                .maybeSingle();
+            if (error || !data) {
+                sendSystemMessage(`❌ ${targetUser.username} não está mutado.`);
+                return true;
+            }
+            await db.from('muted_users').delete().eq('user_id', targetUser.id);
+            await logAdminAction('USER_UNMUTED', { target: targetUser.username });
+            sendSystemMessage(`🔊 ${currentUser.username} removeu o mute de ${targetUser.username}. Agora ele pode enviar mensagens novamente.`);
+        } catch (e) {
+            sendSystemMessage(`❌ Erro ao desmutar: ${e.message}`);
+        }
+        return true;
+    }
+
+    if (cmd === '/warn') {
+
+        if (!canModerate(targetUser, 'mute')) {
+            sendSystemMessage(`❌ Você não pode dar aviso a ${targetUser.role === 'admin' ? 'um administrador' : targetUser.role === 'supervisor' ? 'um supervisor' : 'este usuário'}.`);
+            return true;
+        }
+        if (!['admin', 'supervisor', 'moderator'].includes(currentUser.role)) {
+            sendSystemMessage(`❌ Apenas administradores, supervisores e moderadores podem dar avisos.`);
+            return true;
+        }
+        if (args.length < 2) {
+            sendSystemMessage(`❌ Use: /warn @usuario motivo`);
+            return true;
+        }
+        const targetUsername = args[0].replace(/^@/, '');
+        const targetUser = Object.values(allUsers).find(u => u.username.toLowerCase() === targetUsername);
+        if (!targetUser) {
+            sendSystemMessage(`❌ Usuário "${targetUsername}" não encontrado.`);
+            return true;
+        }
+        const reason = args.slice(1).join(' ');
+        const warnCount = await addWarning(targetUser.id, currentUser.id, reason);
+        const warnLimit = await getWarnLimit();
+        await logAdminAction('USER_WARNED', { target: targetUser.username, reason, count: warnCount });
+        sendSystemMessage(`⚠️ ${currentUser.username} deu um aviso para ${targetUser.username}. Motivo: "${reason}" (${warnCount}/${warnLimit})`);
+        if (warnCount >= warnLimit) {
+            // Aplica mute automático
+            const muteDuration = await getMuteDurationMinutes();
+            const mutedUntil = new Date();
+            mutedUntil.setMinutes(mutedUntil.getMinutes() + muteDuration);
+            await db.from('muted_users').upsert({
+                user_id: targetUser.id,
+                muted_until: mutedUntil.toISOString(),
+                muted_by: currentUser.id,
+                reason: `Atingiu ${warnLimit} avisos`
+            });
+            sendSystemMessage(`🔇 ${targetUser.username} foi mutado automaticamente por ${muteDuration} minuto(s) por atingir ${warnLimit} avisos.`);
+        }
+        return true;
+    }
+
+    if (cmd === '/tempo') {
+        if (args.length === 0) {
+            sendSystemMessage(`❌ Use: /tempo "cidade" (ex: /tempo São Paulo)`);
+            return true;
+        }
+        const city = args.join(' ');
+        const apiKey = '196f3ab77cb5a56872ae72a58a4b19a5'; // <-- insira sua chave aqui
+        try {
+            const response = await fetch(`https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(city)}&appid=${apiKey}&units=metric&lang=pt_br`);
+            const data = await response.json();
+            if (data.cod !== 200) {
+                sendSystemMessage(`❌ Cidade "${city}" não encontrada. Tente o nome em inglês ou adicione ",BR" (ex: /tempo Maringa,BR)`);
+                return true;
+            }
+            const temp = data.main.temp;
+            const feelsLike = data.main.feels_like;
+            const desc = data.weather[0].description;
+            const umid = data.main.humidity;
+            const vento = data.wind.speed;
+            sendSystemMessage(`🌤️ **${city}**\nTemperatura: ${temp}°C (sensação ${feelsLike}°C)\n${desc}\nUmidade: ${umid}% | Vento: ${vento} m/s`);
+        } catch (e) {
+            sendSystemMessage(`❌ Erro ao buscar clima. Verifique sua chave da API.`);
+        }
+        return true;
+    }
+
     return false;
 
 
@@ -2389,7 +2679,24 @@ async function sendSystemMessage(text) {
 }
 
 
-
+// ========== HIERARQUIA DE MODERAÇÃO ==========
+function canModerate(targetUser, action = 'mute') {
+    const roles = { 'user': 1, 'moderator': 2, 'supervisor': 3, 'admin': 4 };
+    const targetRoleLevel = roles[targetUser.role];
+    const currentRoleLevel = roles[currentUser.role];
+    
+    // Não pode agir sobre si mesmo
+    if (currentUser.id === targetUser.id) return false;
+    
+    // Regras específicas por cargo
+    if (currentUser.role === 'moderator' && (targetUser.role === 'supervisor' || targetUser.role === 'admin')) return false;
+    if (currentUser.role === 'supervisor' && targetUser.role === 'admin') return false;
+    
+    // Se o cargo atual for menor que o alvo, não pode (exceto admin, que pode tudo)
+    if (currentRoleLevel < targetRoleLevel && currentUser.role !== 'admin') return false;
+    
+    return true;
+}
 
 
 
@@ -2751,4 +3058,119 @@ async function getMuteDurationMinutes() {
         .eq('key', 'mute_duration_minutes')
         .single();
     return data ? parseInt(data.value) : 30;
+}
+
+function isNearBottom(container, threshold = 150) {
+  return container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+}
+
+function toggleScrollButton() {
+  const container = document.getElementById('geralMessages');
+  const btn = document.getElementById('scrollToBottomBtn');
+  if (!container || !btn) return;
+  
+  if (isNearBottom(container)) {
+    btn.classList.remove('visible');
+  } else {
+    btn.classList.add('visible');
+  }
+}
+
+function scrollToBottom() {
+  const container = document.getElementById('geralMessages');
+  if (container) {
+    container.scrollTo({
+      top: container.scrollHeight,
+      behavior: 'smooth'
+    });
+    // Esconde a seta imediatamente (a rolagem vai disparar o scroll event e reavaliar)
+    toggleScrollButton();
+  }
+}
+
+//====================================================================================================
+//Função para mostrar/esconder sugestões
+
+function hideMentionSuggestions() {
+  mentionSuggestions.classList.remove('open');
+  mentionFilter = '';
+  mentionSelectedIndex = 0;
+}
+
+function showMentionSuggestions(filterText) {
+  const users = Object.values(allUsers);
+  const filtered = users.filter(u =>
+    u.username.toLowerCase().startsWith(filterText.toLowerCase())
+  );
+
+  if (filtered.length === 0) {
+    hideMentionSuggestions();
+    return;
+  }
+
+  mentionFilter = filterText;
+  mentionSelectedIndex = 0;
+
+  mentionSuggestions.innerHTML = '';
+  filtered.forEach((user, idx) => {
+    const div = document.createElement('div');
+    div.className = 'mention-suggestion-item';
+    if (idx === 0) div.classList.add('selected');
+
+    const avatar = user.avatar_url
+      ? `<img src="${escapeHtml(user.avatar_url)}" alt="${escapeHtml(user.username)}">`
+      : getInitials(user.username);
+
+    div.innerHTML = `
+      <div class="mention-suggestion-avatar">${avatar}</div>
+      <span class="mention-suggestion-name">${escapeHtml(user.username)}</span>
+      <span class="mention-suggestion-role">${user.role}</span>
+    `;
+
+    div.addEventListener('click', () => {
+      insertMention(user.username);
+    });
+
+    mentionSuggestions.appendChild(div);
+  });
+
+  mentionSuggestions.classList.add('open');
+}
+
+function updateMentionSelection(delta) {
+  const items = mentionSuggestions.querySelectorAll('.mention-suggestion-item');
+  if (items.length === 0) return;
+  items[mentionSelectedIndex].classList.remove('selected');
+  mentionSelectedIndex = (mentionSelectedIndex + delta + items.length) % items.length;
+  items[mentionSelectedIndex].classList.add('selected');
+  items[mentionSelectedIndex].scrollIntoView({ block: 'nearest' });
+}
+
+function getSelectedMentionUser() {
+  const items = mentionSuggestions.querySelectorAll('.mention-suggestion-item');
+  if (items.length === 0) return null;
+  const selected = items[mentionSelectedIndex];
+  return selected.querySelector('.mention-suggestion-name').textContent;
+}
+
+function insertMention(username) {
+  const input = document.getElementById('geralMessageInput');
+  const cursorPos = input.selectionStart;
+  const textBefore = input.value.substring(0, cursorPos);
+  const textAfter = input.value.substring(cursorPos);
+
+  // Encontra o início do @ (último @ antes do cursor)
+  const atIndex = textBefore.lastIndexOf('@');
+  if (atIndex === -1) {
+    hideMentionSuggestions();
+    return;
+  }
+
+  const newText = textBefore.substring(0, atIndex) + '@' + username + ' ' + textAfter;
+  input.value = newText;
+  const newCursor = atIndex + username.length + 2; // após "@username "
+  input.selectionStart = input.selectionEnd = newCursor;
+  input.focus();
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  hideMentionSuggestions();
 }

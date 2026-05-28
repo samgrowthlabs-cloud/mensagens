@@ -78,8 +78,41 @@ class DatabaseManager {
         return data || [];
     }
 
-    async createUser(userData) {
+    async createUser(userData, creatorRole = null) {
         if (!db) throw new Error('Supabase não inicializado');
+        
+        const requestedRole = userData.role || 'user';
+        
+        // 🔥 NINGUÉM pode criar um novo ADMIN (só o existente no banco)
+        if (requestedRole === 'admin') {
+            throw new Error('Não é possível criar outro administrador. Apenas um admin existe no sistema.');
+        }
+        
+        if (creatorRole) {
+            // Admin pode criar qualquer cargo, exceto admin (já barrado acima)
+            if (creatorRole === 'admin') {
+                // permitido (user, moderator, supervisor)
+            }
+            // Supervisor só pode criar user ou moderator
+            else if (creatorRole === 'supervisor') {
+                if (requestedRole !== 'user' && requestedRole !== 'moderator') {
+                    throw new Error('Supervisores só podem criar usuários comuns ou moderadores');
+                }
+            }
+            // Moderador não pode criar usuários
+            else if (creatorRole === 'moderator') {
+                throw new Error('Moderadores não podem criar usuários');
+            }
+            // Qualquer outro caso (user) não pode criar
+            else {
+                throw new Error('Sem permissão para criar usuários');
+            }
+        }
+
+        const existing = await db.from('users').select('username').eq('username', userData.username).maybeSingle();
+        if (existing.data) {
+            throw new Error('Já existe um usuário com este nome');
+        }
         
         const passwordHash = await cryptoManager.createPasswordHash(userData.password);
         
@@ -89,7 +122,7 @@ class DatabaseManager {
                 username: userData.username,
                 email: userData.email,
                 password_hash: passwordHash,
-                role: userData.role || 'user',
+                role: requestedRole,
                 avatar_url: userData.avatar_url || null,
                 status: 'offline'
             })
@@ -100,8 +133,20 @@ class DatabaseManager {
         return data;
     }
 
-    async updateUser(userId, updates) {
+    async updateUser(userId, updates, updaterRole = null) {
         if (!db) throw new Error('Supabase não inicializado');
+        
+        // Se estiver tentando mudar o cargo para 'admin'
+        if (updates.role === 'admin') {
+            throw new Error('Não é possível promover ninguém a administrador. Apenas um admin existe no sistema.');
+        }
+        
+        // Supervisor não pode promover a supervisor ou admin
+        if (updates.role && updaterRole === 'supervisor') {
+            if (updates.role === 'supervisor' || updates.role === 'admin') {
+                throw new Error('Supervisores não podem promover usuários a supervisor ou administrador');
+            }
+        }
         
         // Se houver senha, fazer hash
         if (updates.password) {
@@ -446,6 +491,28 @@ class DatabaseManager {
         
         if (error) throw error;
         return true;
+    }
+
+    async checkUsernameExists(username) {
+        if (!db) throw new Error('Supabase não inicializado');
+        const { data, error } = await db
+            .from('users')
+            .select('username')
+            .eq('username', username)
+            .maybeSingle();
+        if (error) throw error;
+        return !!data;
+    }
+
+    async checkEmailExists(email) {
+        if (!db) throw new Error('Supabase não inicializado');
+        const { data, error } = await db
+            .from('users')
+            .select('email')
+            .eq('email', email)
+            .maybeSingle();
+        if (error) throw error;
+        return !!data;
     }
 
     // ============================================

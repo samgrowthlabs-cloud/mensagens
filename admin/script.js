@@ -8,7 +8,8 @@ let filteredUsers = [];
 let statsInterval = null;
 let reactionsPollInterval = null; // polling das reações dos anúncios
 let messagesChart = null;
-
+let memeFileToUpload = null;
+let editFileToUpload = null;
 
 
 const actionLabels = {
@@ -57,20 +58,114 @@ async function loadMemes() {
             return;
         }
         tbody.innerHTML = allMemes.map(meme => `
-            <tr style="vertical-align: middle;">
-                <td style="padding: 12px 8px;"><strong>/${escapeHtml(meme.command)}</strong></td>
-                <td style="padding: 12px 8px; word-break: break-all;">
-                    <a href="${escapeHtml(meme.url)}" target="_blank" style="color:#8b5cf6;">Ver GIF</a>
+            <tr>
+                <td>
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <img src="${escapeHtml(meme.url)}" class="meme-thumb" onerror="this.src='data:image/svg+xml,...'">
+                    <strong>/${escapeHtml(meme.command)}</strong>
+                </div>
                 </td>
-                <td style="padding: 8px; text-align: center; white-space: nowrap;">
-                    <button class="btn-action" onclick="editMeme('${meme.id}')" style="margin-right: 8px;">✏️ Editar</button>
-                    <button class="btn-action danger" onclick="deleteMeme('${meme.id}')">🗑️ Excluir</button>
+                <td style="max-width:300px; word-break:break-all;">
+                <a href="${escapeHtml(meme.url)}" target="_blank" style="color: #a78bfa;">Ver original</a>
+                </td>
+                <td>
+                <button class="btn-action primary" onclick="editMeme('${meme.id}')">✏️</button>
+                <button class="btn-action danger" onclick="deleteMeme('${meme.id}')">🗑️</button>
                 </td>
             </tr>
-        `).join('');
+            `).join('');
     } catch (e) {
         tbody.innerHTML = '<tr><td colspan="3" style="color:red;">Erro ao carregar</td></tr>';
     }
+}
+
+
+
+// =============================================
+// LISTENERS DE UPLOAD PARA EDIÇÃO
+// =============================================
+
+
+function setupEditUploadListeners(meme) {
+  const area = document.getElementById('editUploadArea');
+  const fileInput = document.getElementById('editFileInput');
+  const content = document.getElementById('editUploadContent');
+  const preview = document.getElementById('editUploadPreview');
+  const removeBtn = document.getElementById('editUploadRemove');
+
+  // Clonagem para evitar múltiplos event listeners
+  const newArea = area.cloneNode(true);
+  area.parentNode.replaceChild(newArea, area);
+  
+  // Reatribuir referências após clonagem
+  const newFileInput = document.getElementById('editFileInput');
+  const newContent = document.getElementById('editUploadContent');
+  const newPreview = document.getElementById('editUploadPreview');
+  const newRemoveBtn = document.getElementById('editUploadRemove');
+
+  newArea.addEventListener('click', (e) => {
+    if (e.target !== newRemoveBtn && !newRemoveBtn?.contains(e.target)) {
+      newFileInput.click();
+    }
+  });
+
+  newArea.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    newArea.classList.add('drag-over');
+  });
+
+  newArea.addEventListener('dragleave', () => {
+    newArea.classList.remove('drag-over');
+  });
+
+  newArea.addEventListener('drop', (e) => {
+    e.preventDefault();
+    newArea.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      processEditFile(file, newPreview, newContent, newRemoveBtn);
+      editFileToUpload = file;
+    }
+  });
+
+  newFileInput.addEventListener('change', () => {
+    const file = newFileInput.files[0];
+    if (file) {
+      processEditFile(file, newPreview, newContent, newRemoveBtn);
+      editFileToUpload = file;
+    }
+  });
+
+  if (newRemoveBtn) {
+    newRemoveBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      editFileToUpload = null;
+      newFileInput.value = '';
+      newPreview.src = meme.url;
+      newPreview.style.display = 'block';
+      newContent.style.display = 'none';
+      newRemoveBtn.style.display = 'flex';
+    });
+  }
+}
+
+function processEditFile(file, preview, content, removeBtn) {
+  if (!['image/gif', 'image/webp'].includes(file.type)) {
+    showToast('Apenas GIF ou WebP são permitidos', 'error');
+    return;
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    showToast('Arquivo muito grande (máx. 5 MB)', 'error');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    preview.src = e.target.result;
+    preview.style.display = 'block';
+    content.style.display = 'none';
+    removeBtn.style.display = 'flex';
+  };
+  reader.readAsDataURL(file);
 }
 
 
@@ -99,130 +194,395 @@ async function cleanOldGeralMessages() {
         showToast('Erro ao limpar mensagens: ' + e.message, 'error');
     }
 }
-
 function showCreateMemeModal() {
+  const existing = document.querySelector('.modal-overlay');
+  if (existing) existing.remove();
+
   const modal = document.createElement('div');
   modal.className = 'modal-overlay';
   modal.innerHTML = `
-    <div class="modal" style="max-width:500px;">
-      <h2 class="modal-title">🎬 Novo Comando de Meme</h2>
-      <div class="modal-body">
-        <div class="form-group">
-          <label>Comando (sem a barra)</label>
-          <input type="text" id="memeCommand" class="form-input" placeholder="ex: meme01">
-          <small>O usuário digitará <strong>/meme01</strong> no chat</small>
-        </div>
-        <div class="form-group">
-          <label>URL do GIF/WebP</label>
-          <input type="url" id="memeUrl" class="form-input" placeholder="https://...">
-        </div>
-        <div id="memePreview" style="margin-top:12px;"></div>
+    <div class="modal meme-upload-modal">
+      <button class="modal-close-btn" onclick="this.closest('.modal-overlay').remove()">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+      
+      <div class="meme-modal-header">
+        <div class="meme-modal-icon">🎬</div>
+        <h2 class="meme-modal-title">Novo Comando de GIF</h2>
+        <p class="meme-modal-subtitle">Faça upload de um GIF/WebP ou cole uma URL</p>
       </div>
-      <div class="modal-footer">
-        <button class="btn-cancel" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
-        <button class="btn-save" id="saveMemeBtn">Salvar</button>
+
+      <div class="meme-modal-body">
+        <!-- Campo de comando -->
+        <div class="form-group meme-command-group">
+          <label class="meme-label">Comando</label>
+          <div class="meme-command-input-wrapper">
+            <span class="meme-command-prefix">/</span>
+            <input type="text" id="memeCommand" class="meme-command-input" placeholder="meme01" maxlength="30" autocomplete="off">
+          </div>
+          <small style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px; display: block;">Apenas letras minúsculas, números e _ (ex: meme01, gif_legal)</small>
+        </div>
+
+        <!-- Área de upload -->
+        <div class="form-group">
+          <label class="meme-label">Upload do GIF</label>
+          <div class="meme-upload-area" id="memeUploadArea">
+            <input type="file" id="memeFileInput" accept="image/gif,image/webp" hidden>
+            <div class="meme-upload-content" id="memeUploadContent">
+              <div class="meme-upload-icon">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="17 8 12 3 7 8"/>
+                  <line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+              </div>
+              <p class="meme-upload-text">Arraste um GIF/WebP aqui ou <span class="meme-upload-link">clique para selecionar</span></p>
+              <p class="meme-upload-hint">Tamanho máximo: 5 MB</p>
+            </div>
+            <img id="memeUploadPreview" class="meme-upload-preview" style="display:none;">
+            <button id="memeUploadRemove" class="meme-upload-remove" style="display:none;" title="Remover">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Separador -->
+        <div class="meme-divider">
+          <span class="meme-divider-text">ou cole uma URL</span>
+        </div>
+
+        <!-- Campo de URL -->
+        <div class="form-group">
+          <label class="meme-label">URL do GIF</label>
+          <input type="url" id="memeUrl" class="meme-url-input" placeholder="https://exemplo.com/gif.gif">
+        </div>
+      </div>
+
+      <div class="meme-modal-footer">
+        <button class="meme-btn-cancel" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
+        <button class="meme-btn-save" id="saveMemeBtn">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+          Adicionar Comando
+        </button>
       </div>
     </div>
   `;
+
   document.body.appendChild(modal);
-  
-  const urlInput = document.getElementById('memeUrl');
-  const previewDiv = document.getElementById('memePreview');
-  urlInput.addEventListener('input', () => {
-    const url = urlInput.value.trim();
-    previewDiv.innerHTML = url ? `<img src="${escapeHtml(url)}" style="max-width:100px; border-radius:8px;">` : '';
-  });
-  
-  document.getElementById('saveMemeBtn').onclick = async () => {
-    const command = document.getElementById('memeCommand').value.trim().toLowerCase();
-    const url = document.getElementById('memeUrl').value.trim();
-    if (!command || !url) {
-      showToast('Preencha ambos os campos', 'error');
-      return;
-    }
-    if (!/^[a-z0-9_]+$/.test(command)) {
-      showToast('Comando inválido (use apenas letras minúsculas, números e _)', 'error');
-      return;
-    }
-    try {
-      await db.from('meme_commands').insert({ command, url });
-      await logAdminAction('MEME_COMMAND_CREATED', { command });
-      showToast('Comando criado!', 'success');
-      await loadActivityLogs();
-      modal.remove();
-      loadMemes();
-    } catch (e) {
-      showToast('Erro: ' + e.message, 'error');
-    }
-  };
+  setupMemeUploadListeners();
+  document.getElementById('saveMemeBtn').addEventListener('click', saveMeme);
 }
+
+function setupMemeUploadListeners() {
+  const area = document.getElementById('memeUploadArea');
+  const fileInput = document.getElementById('memeFileInput');
+  const content = document.getElementById('memeUploadContent');
+  const preview = document.getElementById('memeUploadPreview');
+  const removeBtn = document.getElementById('memeUploadRemove');
+
+  area.addEventListener('click', (e) => {
+    if (e.target !== removeBtn && !removeBtn.contains(e.target)) {
+      fileInput.click();
+    }
+  });
+
+  area.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    area.classList.add('drag-over');
+  });
+
+  area.addEventListener('dragleave', () => {
+    area.classList.remove('drag-over');
+  });
+
+  area.addEventListener('drop', (e) => {
+    e.preventDefault();
+    area.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file) processMemeFile(file, preview, content, removeBtn);
+  });
+
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files[0];
+    if (file) processMemeFile(file, preview, content, removeBtn);
+  });
+
+  removeBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    memeFileToUpload = null;
+    fileInput.value = '';
+    preview.style.display = 'none';
+    preview.src = '';
+    content.style.display = '';
+    removeBtn.style.display = 'none';
+  });
+}
+
+function processMemeFile(file, preview, content, removeBtn) {
+  if (!['image/gif', 'image/webp'].includes(file.type)) {
+    showToast('Apenas GIF ou WebP são permitidos', 'error');
+    return;
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    showToast('Arquivo muito grande (máx. 5 MB)', 'error');
+    return;
+  }
+
+  memeFileToUpload = file;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    preview.src = e.target.result;
+    preview.style.display = 'block';
+    content.style.display = 'none';
+    removeBtn.style.display = 'flex';
+  };
+  reader.readAsDataURL(file);
+}
+
+async function saveMeme() {
+  const command = document.getElementById('memeCommand').value.trim().toLowerCase();
+  const urlInput = document.getElementById('memeUrl').value.trim();
+
+  if (!command) { showToast('Digite o comando', 'error'); return; }
+  if (!/^[a-z0-9_]+$/.test(command)) { showToast('Comando inválido (apenas letras, números e _)', 'error'); return; }
+
+  let finalUrl = urlInput;
+  if (memeFileToUpload) {
+    try {
+      const fileExt = memeFileToUpload.name.split('.').pop();
+      const fileName = `${Date.now()}-${Math.random().toString(36).substr(2, 8)}.${fileExt}`;
+      
+      const { data, error } = await db.storage.from('gifs').upload(fileName, memeFileToUpload, {
+        cacheControl: '3600',
+        upsert: false,
+        contentType: memeFileToUpload.type
+      });
+      if (error) throw error;
+      
+      // Obtém a URL pública corretamente
+      const { data: urlData } = db.storage.from('gifs').getPublicUrl(fileName);
+      finalUrl = urlData.publicUrl;
+    } catch (e) {
+      showToast('Erro no upload: ' + e.message, 'error');
+      return;
+    }
+  }
+
+  if (!finalUrl) { showToast('Forneça uma URL ou faça upload', 'error'); return; }
+
+  // Validação extra: testar se a URL é acessível
+  try {
+    const testResponse = await fetch(finalUrl, { method: 'HEAD' });
+    if (!testResponse.ok) {
+      showToast('A URL fornecida não está acessível', 'error');
+      return;
+    }
+  } catch (e) {
+    showToast('Erro ao validar URL', 'error');
+    return;
+  }
+
+  try {
+    await db.from('meme_commands').insert({ command, url: finalUrl });
+    await logAdminAction('MEME_COMMAND_CREATED', { command });
+    showToast('Comando criado!', 'success');
+    document.querySelector('.modal-overlay').remove();
+    loadMemes();
+    await loadActivityLogs();
+  } catch (e) {
+    showToast('Erro: ' + e.message, 'error');
+  }
+}
+
+function setupMemeUpload() {
+  const zone = document.getElementById('uploadZone');
+  const fileInput = document.getElementById('memeFile');
+  const preview = document.getElementById('uploadPreview');
+  const prompt = zone.querySelector('.upload-prompt');
+
+  zone.addEventListener('click', () => fileInput.click());
+
+  zone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    zone.style.borderColor = '#8b5cf6';
+  });
+  zone.addEventListener('dragleave', () => {
+    zone.style.borderColor = '';
+  });
+  zone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    zone.style.borderColor = '';
+    const file = e.dataTransfer.files[0];
+    if (file && (file.type === 'image/gif' || file.type === 'image/webp')) {
+      handleMemeFile(file, preview, prompt);
+    } else {
+      showToast('Apenas GIF ou WebP são permitidos', 'error');
+    }
+  });
+
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files[0];
+    if (file) handleMemeFile(file, preview, prompt);
+  });
+}
+
+function handleMemeFile(file, preview, prompt) {
+  if (file.size > 5 * 1024 * 1024) {
+    showToast('Arquivo muito grande (máx 5MB)', 'error');
+    return;
+  }
+  memeFileToUpload = file;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    preview.src = e.target.result;
+    preview.style.display = 'block';
+    prompt.style.display = 'none';
+  };
+  reader.readAsDataURL(file);
+}
+
+
 
 async function editMeme(id) {
   const meme = allMemes.find(m => m.id === id);
   if (!meme) return;
+
+  const existing = document.querySelector('.modal-overlay');
+  if (existing) existing.remove();
+
   const modal = document.createElement('div');
   modal.className = 'modal-overlay';
   modal.innerHTML = `
-    <div class="modal" style="max-width:500px;">
-      <h2 class="modal-title">✏️ Editar Comando</h2>
-      <div class="modal-body">
-        <div class="form-group">
-          <label>Comando (sem a barra)</label>
-          <input type="text" id="editCommand" class="form-input" value="${escapeHtml(meme.command)}">
-        </div>
-        <div class="form-group">
-          <label>URL do GIF/WebP</label>
-          <input type="url" id="editUrl" class="form-input" value="${escapeHtml(meme.url)}">
-        </div>
-        <div id="editPreview"></div>
+    <div class="modal meme-upload-modal">
+      <button class="modal-close-btn" onclick="this.closest('.modal-overlay').remove()">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+      
+      <div class="meme-modal-header">
+        <div class="meme-modal-icon">✏️</div>
+        <h2 class="meme-modal-title">Editar Comando</h2>
+        <p class="meme-modal-subtitle">/${escapeHtml(meme.command)}</p>
       </div>
-      <div class="modal-footer">
-        <button class="btn-cancel" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
-        <button class="btn-save" id="updateMemeBtn">Atualizar</button>
+
+      <div class="meme-modal-body">
+        <div class="form-group meme-command-group">
+          <label class="meme-label">Comando</label>
+          <div class="meme-command-input-wrapper">
+            <span class="meme-command-prefix">/</span>
+            <input type="text" id="editCommand" class="meme-command-input" value="${escapeHtml(meme.command)}" maxlength="30">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="meme-label">Novo Upload (opcional)</label>
+          <div class="meme-upload-area" id="editUploadArea">
+            <input type="file" id="editFileInput" accept="image/gif,image/webp" hidden>
+            <div class="meme-upload-content" id="editUploadContent">
+              <div class="meme-upload-icon">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              </div>
+              <p class="meme-upload-text">Arraste um novo GIF ou <span class="meme-upload-link">clique aqui</span></p>
+            </div>
+            <img id="editUploadPreview" class="meme-upload-preview" src="${escapeHtml(meme.url)}" style="display:block;">
+            <button id="editUploadRemove" class="meme-upload-remove" title="Remover novo upload">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="meme-divider">
+          <span class="meme-divider-text">ou altere a URL</span>
+        </div>
+
+        <div class="form-group">
+          <label class="meme-label">URL do GIF</label>
+          <input type="url" id="editUrl" class="meme-url-input" value="${escapeHtml(meme.url)}">
+        </div>
+      </div>
+
+      <div class="meme-modal-footer">
+        <button class="meme-btn-cancel" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
+        <button class="meme-btn-save" id="updateMemeBtn">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 14.66V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5.34"/><polygon points="18 2 22 6 12 16 8 16 8 12 18 2"/></svg>
+          Atualizar Comando
+        </button>
       </div>
     </div>
   `;
+
   document.body.appendChild(modal);
-  
-  const previewDiv = document.getElementById('editPreview');
-  const urlInput = document.getElementById('editUrl');
-  const updatePreview = () => {
-    const url = urlInput.value.trim();
-    previewDiv.innerHTML = url ? `<img src="${escapeHtml(url)}" style="max-width:100px; border-radius:8px;">` : '';
-  };
-  urlInput.addEventListener('input', updatePreview);
-  updatePreview();
-  
-  document.getElementById('updateMemeBtn').onclick = async () => {
-    const command = document.getElementById('editCommand').value.trim().toLowerCase();
-    const url = document.getElementById('editUrl').value.trim();
-    if (!command || !url) {
-      showToast('Preencha ambos os campos', 'error');
+  setupEditUploadListeners(meme);
+  document.getElementById('updateMemeBtn').addEventListener('click', () => updateMeme(id));
+}
+
+
+async function updateMeme(id) {
+  console.log('updateMeme chamado com id:', id);
+  const command = document.getElementById('editCommand').value.trim().toLowerCase();
+  const urlInput = document.getElementById('editUrl').value.trim();
+
+  if (!command) { showToast('Digite o comando', 'error'); return; }
+  if (!/^[a-z0-9_]+$/.test(command)) { showToast('Comando inválido', 'error'); return; }
+
+  let finalUrl = urlInput;
+  if (editFileToUpload) {
+    console.log('Fazendo upload de novo arquivo...');
+    try {
+      const fileExt = editFileToUpload.name.split('.').pop();
+      const fileName = `${Date.now()}-${Math.random().toString(36).substr(2, 8)}.${fileExt}`;
+      const { error: uploadError } = await db.storage.from('gifs').upload(fileName, editFileToUpload, {
+        cacheControl: '3600',
+        upsert: false,
+        contentType: editFileToUpload.type
+      });
+      if (uploadError) throw uploadError;
+      const { data: urlData } = db.storage.from('gifs').getPublicUrl(fileName);
+      finalUrl = urlData.publicUrl;
+      console.log('Upload concluído, URL:', finalUrl);
+    } catch (e) {
+      console.error('Erro no upload:', e);
+      showToast('Erro no upload: ' + e.message, 'error');
       return;
     }
-    try {
-      await db.from('meme_commands').update({ command, url, updated_at: new Date() }).eq('id', id);
-      await logAdminAction('MEME_COMMAND_UPDATED', { command, id });
-      showToast('Comando atualizado', 'success');
-      await loadActivityLogs();
-      modal.remove();
-      loadMemes();
-    } catch (e) {
-      showToast('Erro: ' + e.message, 'error');
-    }
-  };
+  }
+
+  if (!finalUrl) { showToast('Forneça uma URL ou faça upload', 'error'); return; }
+
+  try {
+    console.log('Atualizando no banco...');
+    const { error } = await db
+      .from('meme_commands')
+      .update({ command, url: finalUrl, updated_at: new Date() })
+      .eq('id', id);
+    if (error) throw error;
+    await logAdminAction('MEME_COMMAND_UPDATED', { command, id });
+    showToast('Comando atualizado!', 'success');
+    document.querySelector('.modal-overlay')?.remove();
+    loadMemes();  // recarrega a tabela
+    await loadActivityLogs();
+  } catch (e) {
+    console.error('Erro ao atualizar:', e);
+    showToast('Erro: ' + e.message, 'error');
+  }
 }
 
 async function deleteMeme(id) {
-  if (!confirm('Excluir este comando permanentemente?')) return;
+  const meme = allMemes.find(m => m.id === id);
+  const commandName = meme ? meme.command : 'desconhecido';
+
+  if (!confirm(`Excluir permanentemente o comando /${commandName}?`)) return;
+
   try {
-    await db.from('meme_commands').delete().eq('id', id);
-    await logAdminAction('MEME_COMMAND_DELETED', { command, id });
-    showToast('Comando excluído', 'success');
+    const { error } = await db.from('meme_commands').delete().eq('id', id);
+    if (error) throw error;
+
+    await logAdminAction('MEME_COMMAND_DELETED', { command: commandName, id });
+    showToast('Comando excluído com sucesso', 'success');
     await loadActivityLogs();
     loadMemes();
   } catch (e) {
-    showToast('Erro ao excluir', 'error');
+    console.error('Erro ao excluir meme:', e);
+    showToast('Erro ao excluir: ' + (e.message || e), 'error');
   }
 }
 
@@ -585,59 +945,166 @@ function updateSortArrows() {
 // ========== CRUD USUÁRIOS ==========
 function showCreateUserModal() {
     if (currentUserRole !== 'admin' && currentUserRole !== 'supervisor') return;
-    document.getElementById('createUserModal').style.display = 'flex';
+    
+    const modal = document.getElementById('createUserModal');
+    const roleSelect = document.getElementById('newRole');
+    
+    roleSelect.innerHTML = '';
+    
+    if (currentUserRole === 'admin') {
+        // Admin pode criar: user, moderator, supervisor (NUNCA admin)
+        const roles = [
+            { value: 'user', label: 'Usuário' },
+            { value: 'moderator', label: 'Moderador' },
+            { value: 'supervisor', label: 'Supervisor' }
+        ];
+        roles.forEach(role => {
+            const option = document.createElement('option');
+            option.value = role.value;
+            option.textContent = role.label;
+            roleSelect.appendChild(option);
+        });
+    } else if (currentUserRole === 'supervisor') {
+        // Supervisor só pode criar user ou moderator
+        const roles = [
+            { value: 'user', label: 'Usuário' },
+            { value: 'moderator', label: 'Moderador' }
+        ];
+        roles.forEach(role => {
+            const option = document.createElement('option');
+            option.value = role.value;
+            option.textContent = role.label;
+            roleSelect.appendChild(option);
+        });
+    }
+    
+    modal.style.display = 'flex';
 }
+
 function closeCreateUserModal() {
     document.getElementById('createUserModal').style.display = 'none';
     document.getElementById('newUsername').value = '';
     document.getElementById('newEmail').value = '';
     document.getElementById('newPassword').value = '';
 }
+
 async function createUser() {
-    if (currentUserRole !== 'admin' && currentUserRole !== 'supervisor') { showToast('Apenas administradores podem criar usuários', 'error'); return; }
+    if (currentUserRole !== 'admin' && currentUserRole !== 'supervisor') {
+        showToast('Apenas administradores e supervisores podem criar usuários', 'error');
+        return;
+    }
+    
     const username = document.getElementById('newUsername').value.trim();
     const email = document.getElementById('newEmail').value.trim();
     const password = document.getElementById('newPassword').value;
     const role = document.getElementById('newRole').value;
-    if (!username || !email || !password) { showToast('Preencha todos os campos', 'error'); return; }
-    if (!validateEmail(email)) { showToast('Email inválido', 'error'); return; }
-    if (!email.toLowerCase().endsWith('@bidjory.com')) { showToast('Apenas e-mails @bidjory.com são permitidos', 'error'); return; }
-    if (!validateUsername(username)) { showToast('Username inválido (3-30 caracteres, apenas letras, números e _)', 'error'); return; }
+    
+    if (!username || !email || !password) {
+        showToast('Preencha todos os campos', 'error');
+        return;
+    }
+    if (!validateEmail(email)) {
+        showToast('Email inválido', 'error');
+        return;
+    }
+    if (!email.toLowerCase().endsWith('@bidjory.com')) {
+        showToast('Apenas e-mails @bidjory.com são permitidos', 'error');
+        return;
+    }
+    if (!validateUsername(username)) {
+        showToast('Username inválido (3-30 caracteres, apenas letras, números e _)', 'error');
+        return;
+    }
+    
+    // 🔥 Verificar se username já existe
     try {
-        await databaseManager.createUser({ username, email, password, role });
+        const usernameExists = await databaseManager.checkUsernameExists(username);
+        if (usernameExists) {
+            showToast('Este nome de usuário já está em uso', 'error');
+            return;
+        }
+        
+        const emailExists = await databaseManager.checkEmailExists(email);
+        if (emailExists) {
+            showToast('Este email já está cadastrado', 'error');
+            return;
+        }
+    } catch (checkError) {
+        showToast('Erro ao verificar disponibilidade', 'error');
+        return;
+    }
+    
+    try {
+        await databaseManager.createUser(
+            { username, email, password, role },
+            currentUserRole
+        );
         await logAdminAction('USER_CREATED', { username, email, role });
         showToast('Usuário criado com sucesso', 'success');
-        // Dentro de createUser, logo após showToast
         await loadActivityLogs();
         closeCreateUserModal();
         await loadUsers();
         await databaseManager.logActivity(currentUserId, 'USER_CREATED', { username, email });
-    } catch (error) { showToast('Erro ao criar usuário: ' + error.message, 'error'); }
+    } catch (error) {
+        if (error.message.includes('duplicate key')) {
+            showToast('Username ou email já existe', 'error');
+        } else {
+            showToast('Erro ao criar usuário: ' + error.message, 'error');
+        }
+    }
 }
 
 function showEditUserModal(userId) {
     if (currentUserRole !== 'admin' && currentUserRole !== 'supervisor') return;
+    
     const user = allUsers.find(u => u.id === userId);
     if (!user) return;
+    
     editingUserId = userId;
-    if (currentUserRole === 'supervisor') {
-        const roleSelect = document.getElementById('editRole');
-        // Remove opções 'admin' e 'supervisor'
-        Array.from(roleSelect.options).forEach(opt => {
-            if (opt.value === 'admin' || opt.value === 'supervisor') {
-                opt.remove();
-            }
+    
+    const roleSelect = document.getElementById('editRole');
+    roleSelect.innerHTML = '';
+    
+    if (currentUserRole === 'admin') {
+        // Admin pode editar qualquer cargo, exceto NUNCA promover a admin
+        const roles = [
+            { value: 'user', label: 'Usuário' },
+            { value: 'moderator', label: 'Moderador' },
+            { value: 'supervisor', label: 'Supervisor' }
+        ];
+        roles.forEach(role => {
+            const option = document.createElement('option');
+            option.value = role.value;
+            option.textContent = role.label;
+            if (user.role === role.value) option.selected = true;
+            roleSelect.appendChild(option);
+        });
+    } else if (currentUserRole === 'supervisor') {
+        // Supervisor só pode editar cargo de outros para user ou moderator
+        const roles = [
+            { value: 'user', label: 'Usuário' },
+            { value: 'moderator', label: 'Moderador' }
+        ];
+        roles.forEach(role => {
+            const option = document.createElement('option');
+            option.value = role.value;
+            option.textContent = role.label;
+            if (user.role === role.value) option.selected = true;
+            roleSelect.appendChild(option);
         });
     }
+    
     document.getElementById('editUsername').value = user.username;
     document.getElementById('editEmail').value = user.email || '';
-    document.getElementById('editRole').value = user.role;
     document.getElementById('editNewPassword').value = '';
+    
     const roleField = document.getElementById('editRole').closest('.form-group');
     if (userId === currentUserId) roleField.style.display = 'none';
     else roleField.style.display = '';
+    
     document.getElementById('editUserModal').style.display = 'flex';
 }
+
 function closeEditUserModal() { document.getElementById('editUserModal').style.display = 'none'; editingUserId = null; }
 
 async function saveUserEdit() {
@@ -649,19 +1116,16 @@ async function saveUserEdit() {
     const newPassword = document.getElementById('editNewPassword').value;
     const newRole = document.getElementById('editRole').value;
 
-    // Buscar dados atuais do usuário que está sendo editado
     const targetUser = allUsers.find(u => u.id === editingUserId);
     if (!targetUser) return;
 
-    // Supervisor não pode editar admin ou outro supervisor
-    if (currentUserRole === 'supervisor' && (targetUser.role === 'admin' || targetUser.role === 'supervisor')) {
-        showToast('Você não pode editar administradores ou supervisores', 'error');
-        return;
-    }
-
-    // Supervisor não pode promover ninguém a admin ou supervisor
+    // Validação extra no front
     if (currentUserRole === 'supervisor' && (newRole === 'admin' || newRole === 'supervisor')) {
         showToast('Supervisores não podem promover usuários a administrador ou supervisor', 'error');
+        return;
+    }
+    if (newRole === 'admin') {
+        showToast('Não é possível promover ninguém a administrador', 'error');
         return;
     }
 
@@ -669,30 +1133,21 @@ async function saveUserEdit() {
         const updates = {};
         if (username) updates.username = username;
         if (email) updates.email = email;
+        if (editingUserId !== currentUserId && newRole) updates.role = newRole;
 
-        // Atualizar cargo apenas se não for o próprio usuário e se tiver permissão
-        if (editingUserId !== currentUserId && newRole) {
-            updates.role = newRole;
-        }
-
-        await databaseManager.updateUser(editingUserId, updates);
-        await logAdminAction('USER_UPDATED', { 
-            user_id: editingUserId, 
-            target_username: targetUser.username,
-            updates 
-        });
+        await databaseManager.updateUser(editingUserId, updates, currentUserRole);
+        
         if (newPassword) {
             await databaseManager.updateUser(editingUserId, { password: newPassword });
-            showToast('Senha resetada com sucesso', 'success');
+            showToast('Senha resetada', 'success');
         }
+        
         showToast('Usuário atualizado', 'success');
-        await loadActivityLogs();
-        // Dentro de createUser, logo após showToast
         await loadActivityLogs();
         closeEditUserModal();
         await loadUsers();
     } catch (error) {
-        showToast('Erro ao atualizar usuário: ' + error.message, 'error');
+        showToast('Erro: ' + error.message, 'error');
     }
 }
 

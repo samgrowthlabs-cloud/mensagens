@@ -68,15 +68,34 @@
       <div class="geral-loading">Carregando mensagens...</div>
     </div>
 
+    <!-- 🔽 BOTÃO FLUTUANTE (NOVO) -->
+    <button id="scrollToBottomBtn" class="scroll-to-bottom-btn" title="Rolar para o final">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="6 9 12 15 18 9"/>
+      </svg>
+    </button>
+
     <!-- Input -->
     <div class="geral-input-container">
-      <textarea 
+    <button class="btn-gif" id="gifPickerBtn" title="Escolher GIF">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+        <line x1="9" y1="9" x2="15" y2="9"/>
+        <line x1="9" y1="13" x2="13" y2="13"/>
+        </svg>
+    </button>
+    <textarea 
         id="geralMessageInput" 
         placeholder="Digite sua mensagem no chat geral..." 
         rows="1"
         maxlength="2000"
-      ></textarea>
-      <button class="btn-send" onclick="sendGeralMessage()" title="Enviar">➤</button>
+    ></textarea>
+    <button class="btn-send" onclick="sendGeralMessage()" title="Enviar">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="22" y1="2" x2="11" y2="13"/>
+        <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+        </svg>
+    </button>
     </div>
 
     <!-- Indicador de último visto -->
