@@ -324,11 +324,14 @@ async function loadGeralMessages() {
     container.innerHTML = '<div class="geral-loading">Carregando...</div>';
     
     try {
-        const { data: messages } = await db
+        const { data: messages, error } = await db
             .from('geral_messages')
             .select('*')
+            .eq('deleted', false)        // 🔥 FILTRA MENSAGENS NÃO DELETADAS
             .order('created_at', { ascending: true })
             .limit(100);
+        
+        if (error) throw error;
         
         container.innerHTML = '';
         
@@ -341,7 +344,7 @@ async function loadGeralMessages() {
         if (isNearBottom(container)) {
             container.scrollTop = container.scrollHeight;
         }
-        toggleScrollButton();  // atualiza visibilidade da seta
+        toggleScrollButton();
         
         if (messages.length > 0) {
             lastMessageCheck = messages[messages.length - 1].created_at;
@@ -352,33 +355,28 @@ async function loadGeralMessages() {
 }
 
 
+// ==================== 2. createMessageDiv (sem o bloco de mensagem excluída) ====================
 function createMessageDiv(msg) {
     const user = allUsers[msg.user_id] || { username: 'Desconhecido', role: 'user', avatar_url: null };
     const isOwn = msg.user_id === currentUser.id;
-
-    // 🔥 MENSAGEM DO SISTEMA (sem escape HTML, para exibir aspas corretamente)
     const SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000000';
+
+    // Mensagem do sistema
     if (msg.is_system || msg.user_id === SYSTEM_USER_ID || user.id === SYSTEM_USER_ID) {
         const div = document.createElement('div');
         div.className = 'geral-message geral-message-system';
         div.id = `msg-${msg.id}`;
-        
-        // Aplica formatação markdown diretamente, sem escapeHtml
-        const rawContent = msg.content;
-        let formattedContent = rawContent
+        let formattedContent = msg.content
             .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
             .replace(/\*(.*?)\*/g, '<em>$1</em>')
             .replace(/__(.*?)__/g, '<u>$1</u>')
-            .replace(/~~(.*?)~~/g, '<del>$1</del>');
-        
-        // Substitui quebras de linha por <br>
-        formattedContent = formattedContent.replace(/\n/g, '<br>');
-        
+            .replace(/~~(.*?)~~/g, '<del>$1</del>')
+            .replace(/\n/g, '<br>');
         div.innerHTML = `
             <div class="geral-message-avatar">🤖</div>
             <div class="geral-message-content">
                 <div class="geral-message-header">
-                    <span class="geral-message-username" style="color: #f59e0b;">🤖 Sistema</span>
+                    <span class="geral-message-username" style="color:#f59e0b;">🤖 Sistema</span>
                     <span class="geral-message-time">${formatTime(msg.created_at)}</span>
                 </div>
                 <div class="geral-message-text">${formattedContent}</div>
@@ -387,58 +385,40 @@ function createMessageDiv(msg) {
         return div;
     }
 
-    // ----------------------------------------------
-    // Restante da função (mensagens normais) – inalterado
-    // ----------------------------------------------
+    // Permissões
     const isCurrentAdmin = currentUser.role === 'admin';
     const isCurrentModerator = currentUser.role === 'moderator';
     const isCurrentSupervisor = currentUser.role === 'supervisor';
-
-    let canEdit = false;
-    let canDelete = false;
+    let canEdit = false, canDelete = false;
 
     if (isCurrentAdmin) {
-        canEdit = !msg.deleted && (!msg.edited || isMessageEditable(msg.created_at));
-        canDelete = !msg.deleted;
+        canEdit = !msg.edited || isMessageEditable(msg.created_at);
+        canDelete = true;
     } else if (isCurrentSupervisor) {
         if (user.role === 'user' || isOwn) {
-            canEdit = !msg.deleted && (!msg.edited || isMessageEditable(msg.created_at));
-            canDelete = !msg.deleted;
+            canEdit = !msg.edited || isMessageEditable(msg.created_at);
+            canDelete = true;
         }
     } else if (isCurrentModerator) {
         if (user.role === 'user' || isOwn) {
-            canEdit = !msg.deleted && (!msg.edited || isMessageEditable(msg.created_at));
-            canDelete = !msg.deleted;
+            canEdit = !msg.edited || isMessageEditable(msg.created_at);
+            canDelete = true;
         }
     } else {
         if (isOwn) {
-            canEdit = !msg.deleted && (!msg.edited || isMessageEditable(msg.created_at));
-            canDelete = !msg.deleted;
+            canEdit = !msg.edited || isMessageEditable(msg.created_at);
+            canDelete = true;
         }
     }
 
     const canPin = ['admin', 'supervisor', 'moderator'].includes(currentUser.role);
     const roleColor = getRoleColor(user.role);
-
     const div = document.createElement('div');
     div.className = 'geral-message' + (isOwn ? ' geral-message-own' : '');
     div.id = `msg-${msg.id}`;
     div.dataset.messageId = msg.id;
 
-    if (msg.deleted) {
-        div.innerHTML = `
-            <div class="geral-message-avatar"><span>🗑️</span></div>
-            <div class="geral-message-content">
-                <div class="geral-message-header">
-                    <span class="geral-message-username" style="color:${roleColor}">${escapeHtml(user.username)}</span>
-                    <span class="geral-message-time">${formatTime(msg.created_at)}</span>
-                </div>
-                <div class="geral-message-text" style="font-style:italic; color:#6b6b6b;">[Mensagem excluída]</div>
-            </div>
-        `;
-        return div;
-    }
-
+    // Resposta (reply)
     let replyRefHTML = '';
     if (msg.reply_to) {
         const repliedUser = allUsers[msg.reply_to.user_id];
@@ -451,6 +431,7 @@ function createMessageDiv(msg) {
         `;
     }
 
+    // Botões de ação
     let actionsHTML = '';
     if (canEdit || canDelete || canPin) {
         actionsHTML = `<div class="geral-message-actions">`;
@@ -460,17 +441,14 @@ function createMessageDiv(msg) {
         actionsHTML += `</div>`;
     }
 
+    // Conteúdo (GIF ou texto)
     let messageHtml = '';
     const trimmedContent = msg.content.trim();
     const memeUrl = memeCommands[trimmedContent];
-
     if (memeUrl) {
-    messageHtml = `<img src="${memeUrl}" alt="meme" class="meme-gif" loading="lazy" onclick="window.open(this.src)">`;
+        messageHtml = `<img src="${memeUrl}" alt="meme" class="meme-gif" loading="lazy" onclick="window.open(this.src)">`;
     } else {
-        // 1. Aplica linkify e gera tags <a> seguras
         let processedContent = linkifyAndEscape(msg.content);
-        
-        // 2. Processar menções (@usuario) nas tags já existentes
         processedContent = processedContent.replace(/@([a-z0-9_]+)/gi, (match, username) => {
             const userExists = Object.values(allUsers).some(u => u.username.toLowerCase() === username.toLowerCase());
             if (!userExists) return match;
@@ -478,12 +456,8 @@ function createMessageDiv(msg) {
             const extraClass = isMentioningMe ? ' mention-self' : '';
             return `<span class="mention${extraClass}" data-username="${username}" onclick="showUserProfileByUsername('${username}')">@${username}</span>`;
         });
-        
-        // 3. Aplicar formatação markdown (negrito, itálico, sublinhado, riscado)
-        // ATENÇÃO: formatMessageText NÃO DEVE ESCAPAR HTML, apenas substituir padrões
         messageHtml = formatMessageText(processedContent);
     }
-
     const editedMark = msg.edited ? ' <span class="edited-mark">(editado)</span>' : '';
 
     div.innerHTML = `
@@ -498,9 +472,7 @@ function createMessageDiv(msg) {
             </div>
             ${replyRefHTML}
             <div class="geral-message-text">${messageHtml}${editedMark}</div>
-            
             <div class="message-reactions" id="reactions-${msg.id}"></div>
-            
             <div class="geral-message-footer">
                 <button class="geral-message-reply-btn" onclick="event.stopPropagation(); replyTo('${msg.id}', '${escapeHtml(user.username).replace(/'/g, "\\'")}', '${escapeHtml(msg.content).replace(/'/g, "\\'")}')">↩ Responder</button>
                 ${actionsHTML}
@@ -508,13 +480,8 @@ function createMessageDiv(msg) {
         </div>
     `;
 
-    setTimeout(async () => {
-        await renderPoll(msg.id, div.querySelector('.geral-message-text'));
-    }, 100);
-
-    setTimeout(async () => {
-        await loadMessageReactions(msg.id);
-    }, 50);
+    setTimeout(async () => await renderPoll(msg.id, div.querySelector('.geral-message-text')), 100);
+    setTimeout(async () => await loadMessageReactions(msg.id), 50);
 
     const contentDiv = div.querySelector('.geral-message-content');
     if (contentDiv) {
@@ -527,9 +494,31 @@ function createMessageDiv(msg) {
         };
         contentDiv.appendChild(reactionsTrigger);
     }
-
     return div;
 }
+
+// ==================== 3. parte do setupRealtimeSubscriptions (substitua o canal geral) ====================
+// Dentro da função setupRealtimeSubscriptions, troque o bloco `geralChannel` por este:
+
+if (geralChannel) db.removeChannel(geralChannel);
+
+geralChannel = db
+    .channel('geral-messages-changes')
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'geral_messages' }, (payload) => {
+        const updatedMsg = payload.new;
+        if (updatedMsg.deleted) {
+            const msgDiv = document.getElementById(`msg-${updatedMsg.id}`);
+            if (msgDiv) msgDiv.remove();          // ← remove a mensagem deletada
+        } else {
+            renderMessage(updatedMsg);             // ← atualiza edição
+        }
+    })
+    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'geral_messages' }, (payload) => {
+        const deletedId = payload.old.id;
+        const msgDiv = document.getElementById(`msg-${deletedId}`);
+        if (msgDiv) msgDiv.remove();
+    })
+    .subscribe();
 
 function renderMessage(msg, prepend = false) {
     const container = document.getElementById('geralMessages');
@@ -1508,8 +1497,13 @@ async function showNotification(title, body, icon, data) {
     }
     if (Notification.permission !== 'granted') return;
     
-    // Garante que icon nunca seja null/undefined
-    const safeIcon = icon || '';
+    let safeIcon = icon;
+    if (safeIcon && safeIcon.startsWith('/')) {
+        safeIcon = window.location.origin + safeIcon;
+    }
+    if (!safeIcon) {
+        safeIcon = '/favicon-192.png';
+    }
     
     const registration = await navigator.serviceWorker.getRegistration();
     if (!registration) {
@@ -1520,7 +1514,7 @@ async function showNotification(title, body, icon, data) {
         body: body,
         icon: safeIcon,
         badge: safeIcon,
-        tag: 'bidjorchat',
+        tag: 'bidjorchat-private',
         renotify: true,
         data: data || { url: window.location.href },
         vibrate: [200, 100, 200]
@@ -1675,14 +1669,12 @@ function setupRealtimeSubscriptions() {
             { event: 'UPDATE', schema: 'public', table: 'geral_messages' },
             (payload) => {
                 const updatedMsg = payload.new;
-                // Se a mensagem foi marcada como deletada, recria o elemento
+                // Se a mensagem foi marcada como deletada, remove do DOM
                 if (updatedMsg.deleted) {
                     const msgDiv = document.getElementById(`msg-${updatedMsg.id}`);
-                    if (msgDiv) {
-                        const newDiv = createMessageDiv(updatedMsg);
-                        msgDiv.replaceWith(newDiv);
-                    }
+                    if (msgDiv) msgDiv.remove();
                 } else {
+                    // Senão, atualiza normalmente
                     renderMessage(updatedMsg);
                 }
             }

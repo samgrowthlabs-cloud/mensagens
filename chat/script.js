@@ -30,6 +30,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initializeUI(currentUser);
   await updateMyStatus('online');
   await loadAllUsers();
+  setupPrivateRealtime(); // 🔥 adicionado
   await loadConversations();
 
   // Abrir conversa via link (?user=ID)
@@ -287,6 +288,53 @@ function appendMessage(msg, scroll = true) {
   if (scroll && isNearBottom(container)) container.scrollTop = container.scrollHeight;
   toggleScrollButton();
 }
+
+
+let privateChannel = null;
+
+function setupPrivateRealtime() {
+    if (privateChannel) {
+        db.removeChannel(privateChannel);
+    }
+    
+    privateChannel = db
+        .channel('private-messages')
+        .on(
+            'postgres_changes',
+            { event: 'INSERT', schema: 'public', table: 'messages' },
+            (payload) => {
+                const newMsg = payload.new;
+                // Ignora mensagem enviada por mim mesmo
+                if (newMsg.sender_id === currentUser.id) return;
+                
+                // Só notifica se a mensagem é para o usuário atual
+                if (newMsg.receiver_id !== currentUser.id) return;
+                
+                // Obtém dados do remetente
+                const sender = allUsers[newMsg.sender_id];
+                if (!sender) return;
+                
+                // Só notifica se a página estiver em segundo plano
+                if (document.hidden) {
+                    const senderName = sender.username || 'Alguém';
+                    let senderAvatar = sender.avatar_url;
+                    // Garante URL absoluta
+                    if (senderAvatar && senderAvatar.startsWith('/')) {
+                        senderAvatar = window.location.origin + senderAvatar;
+                    }
+                    
+                    showNotification(
+                        `💬 Nova mensagem de ${senderName}`,
+                        newMsg.content.length > 100 ? newMsg.content.substring(0, 100) + '...' : newMsg.content,
+                        senderAvatar,
+                        { url: `/chat/index.html?user=${newMsg.sender_id}` }
+                    );
+                }
+            }
+        )
+        .subscribe();
+}
+
 
 async function sendMessage() {
   const input = document.getElementById('messageInput');
