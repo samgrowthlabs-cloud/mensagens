@@ -2114,3 +2114,35 @@ body {
   color: #888;
   margin-left: auto;
 }
+
+.notify-prompt {
+    position: fixed;
+    bottom: 80px;
+    left: 16px;
+    right: 16px;
+    background: #1f1f2e;
+    border-radius: 24px;
+    padding: 16px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    z-index: 1000;
+    backdrop-filter: blur(10px);
+    border: 1px solid #2a2a3a;
+}
+.notify-prompt-content {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.notify-prompt-content button {
+    background: #7c3aed;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 20px;
+    color: white;
+    font-weight: bold;
+}
+#dismissNotifyBtn {
+    background: #2a2a3a;
+}

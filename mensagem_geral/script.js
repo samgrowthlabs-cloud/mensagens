@@ -272,6 +272,34 @@ document.addEventListener('DOMContentLoaded', async () => {
         scrollBtn.addEventListener('click', scrollToBottom);
         toggleScrollButton(); // estado inicial
     }
+
+    // Pedir permissão de notificação após login
+    if (Notification.permission === 'default') {
+        // Exibe um botão flutuante suave
+        const notifyPrompt = document.createElement('div');
+        notifyPrompt.className = 'notify-prompt';
+        notifyPrompt.innerHTML = `
+            <div class="notify-prompt-content">
+                <span>🔔 Ativar notificações de menção?</span>
+                <button id="enableNotifyBtn">Sim</button>
+                <button id="dismissNotifyBtn">Agora não</button>
+            </div>
+        `;
+        document.body.appendChild(notifyPrompt);
+        
+        document.getElementById('enableNotifyBtn')?.addEventListener('click', async () => {
+            const permission = await Notification.requestPermission();
+            if (permission === 'granted') {
+                showToast('Notificações ativadas!', 'success');
+            } else {
+                showToast('Você bloqueou notificações. Altere nas configurações do navegador.', 'error');
+            }
+            notifyPrompt.remove();
+        });
+        document.getElementById('dismissNotifyBtn')?.addEventListener('click', () => {
+            notifyPrompt.remove();
+        });
+    }
 });
 
 async function waitForSupabase() {
@@ -1727,6 +1755,39 @@ function setupRealtimeSubscriptions() {
         }
     });
     buzzChannel.subscribe();
+
+
+    // Canal específico para novas mensagens (INSERT)
+    const newMessagesChannel = db
+        .channel('geral-new-messages')
+        .on(
+            'postgres_changes',
+            { event: 'INSERT', schema: 'public', table: 'geral_messages' },
+            (payload) => {
+                const msg = payload.new;
+                // Evita processar mensagem do próprio usuário
+                if (msg.user_id === currentUser.id) return;
+                
+                // Verifica menção
+                const mentions = msg.mentions || [];
+                if (mentions.includes(currentUser.id)) {
+                    const sender = allUsers[msg.user_id]?.username || 'Alguém';
+                    // Notifica mesmo com página ativa? Não, só se background.
+                    if (document.hidden) {
+                        showNotification(
+                            `🔔 ${sender} mencionou você`,
+                            msg.content.length > 100 ? msg.content.substring(0, 100) + '...' : msg.content,
+                            allUsers[msg.user_id]?.avatar_url,
+                            { url: '/mensagem_geral/index.html' }
+                        );
+                    }
+                }
+                
+                // Renderiza mensagem (já faz)
+                renderMessage(msg);
+            }
+        )
+        .subscribe();
 }
 
 
