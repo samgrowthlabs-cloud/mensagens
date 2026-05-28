@@ -12,7 +12,8 @@ let currentPinnedMessage = null;
 let geralChannel = null;
 let pinnedChannel = null;
 let onlineInterval = null;
-let memeCommands = {};               // Será preenchido do banco
+let memeCommands = {};      
+let buzzCooldown = {};         // Será preenchido do banco
 // Container de sugestões de menção
 const mentionSuggestions = document.createElement('div');
 mentionSuggestions.id = 'mentionSuggestions';
@@ -1022,20 +1023,7 @@ async function sendGeralMessage() {
 
             await updateLastSeen();
             
-            // Notificar usuários mencionados (já serão notificados no polling, mas opcional aqui)
-            for (const mentionedId of mentionIds) {
-                if (mentionedId !== currentUser.id) {
-                    const mentionedUser = allUsers[mentionedId];
-                    if (mentionedUser) {
-                        await showNotification(
-                            `🔔 Você foi mencionado por ${currentUser.username}`,
-                            content.length > 100 ? content.substring(0, 100) + '...' : content,
-                            currentUser.avatar_url,
-                            { url: '/mensagem_geral/index.html' }
-                        );
-                    }
-                }
-            }
+           
         }
     } catch (e) {
         showToast('Erro ao enviar: ' + e.message, 'error');
@@ -1719,6 +1707,26 @@ function setupRealtimeSubscriptions() {
         }
     })
     .subscribe();
+
+    // Canal para vibração
+    const buzzChannel = db.channel('geral-vibrate');
+    buzzChannel.on('broadcast', { event: 'buzz' }, (payload) => {
+        const { from } = payload.payload;
+        // Verifica se o próprio remetente não deve vibrar? Pode vibrar também, mas opcional.
+        // Só vibra se o navegador suportar e se a página estiver visível (ou não)
+        if (window.navigator && window.navigator.vibrate) {
+            // Padrão de vibração: 200ms, pausa 100ms, 200ms
+            window.navigator.vibrate([200, 100, 200]);
+            // Opcional: mostrar um pequeno toast informando quem buzzou
+            if (from !== currentUser.username) {
+                showToast(`📳 ${from} fez o chat vibrar!`, 'info');
+            }
+        } else {
+            // Fallback: console log
+            console.log('Navegador não suporta vibração');
+        }
+    });
+    buzzChannel.subscribe();
 }
 
 
@@ -2159,6 +2167,48 @@ async function processGeneralCommands(content) {
         }
         const chosen = options[Math.floor(Math.random() * options.length)];
         sendSystemMessage(`🎲 ${currentUser.username} pediu para escolher entre: ${options.join(', ')}\n\n➡️ **${chosen}**`);
+        return true;
+    }
+
+
+    if (cmd === '/buzz') {
+        // Verifica permissão: apenas admin, supervisor e moderador
+        if (!['admin', 'supervisor', 'moderator'].includes(currentUser.role)) {
+            sendSystemMessage(`❌ Apenas administradores, supervisores e moderadores podem usar /buzz.`);
+            return true;
+        }
+        
+        // Cooldown de 30 segundos para o mesmo usuário
+        const now = Date.now();
+        if (buzzCooldown[currentUser.id] && now - buzzCooldown[currentUser.id] < 30000) {
+            const remaining = Math.ceil((30000 - (now - buzzCooldown[currentUser.id])) / 1000);
+            sendSystemMessage(`⏳ Aguarde ${remaining} segundos antes de usar /buzz novamente.`);
+            return true;
+        }
+        buzzCooldown[currentUser.id] = now;
+        
+        // Envia mensagem de sistema avisando
+        sendSystemMessage(`📳 ${currentUser.username} fez o chat inteiro VIBRAR!`);
+        
+        // Obtém todos os clientes conectados? Não, apenas quem está com a página aberta.
+        // A vibração será disparada via um evento de broadcast usando o canal Realtime.
+        // Vamos enviar um evento personalizado para todos os clientes inscritos no canal 'geral'
+        
+        try {
+            // Usa o canal Realtime para enviar um evento de vibração
+            await db.channel('geral-vibrate').send({
+                type: 'broadcast',
+                event: 'buzz',
+                payload: {
+                    from: currentUser.username,
+                    timestamp: now
+                }
+            });
+            sendSystemMessage(`📳 Vibração enviada para todos os usuários ativos!`);
+        } catch (e) {
+            sendSystemMessage(`❌ Erro ao enviar vibração: ${e.message}`);
+        }
+        
         return true;
     }
 
