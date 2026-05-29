@@ -36,6 +36,7 @@ const actionLabels = {
     'MASS_DELETE_GERAL_MSGS': '🌐 Mensagens gerais em massa',
     'MASS_DELETE_ALL_MSGS': '🔥 Todas as mensagens apagadas',
     'MASS_ROLE_CHANGE': '👥 Cargo em massa alterado',
+    'MASS_DELETE_AUDIO': '🎤 Apagou todos os áudios',
     'RATE_LIMIT_SETTINGS_CHANGED': '⏱️ Configurações de spam alteradas'
 };
 
@@ -1406,6 +1407,55 @@ async function deleteAllUsers() {
         catch (error) { showToast('Erro ao excluir usuários: ' + error.message, 'error'); }
     });
 }
+
+// ========== APAGAR TODOS OS ÁUDIOS (ADMIN/SUPERVISOR) ==========
+async function deleteAllAudioMessages() {
+    const user = sessionManager.getCurrentUser();
+    if (!user || (user.role !== 'admin' && user.role !== 'supervisor')) {
+        showToast('Apenas administradores e supervisores podem realizar esta ação', 'error');
+        return;
+    }
+
+    showPasswordModal('🎤 Apagar todos os áudios', async () => {
+        try {
+            // 1. Apagar mensagens de áudio do banco (geral_messages)
+            const { error: deleteMsgsError } = await db
+                .from('geral_messages')
+                .delete()
+                .like('content', '[AUDIO]%');
+            if (deleteMsgsError) throw deleteMsgsError;
+
+            // 2. Apagar arquivos do bucket geral_audio
+            const { data: files, error: listError } = await db.storage
+                .from('geral_audio')
+                .list('', { limit: 1000 });
+            if (listError) throw listError;
+
+            if (files && files.length > 0) {
+                const filePaths = files.map(f => f.name);
+                const { error: deleteFilesError } = await db.storage
+                    .from('geral_audio')
+                    .remove(filePaths);
+                if (deleteFilesError) throw deleteFilesError;
+            }
+
+            await logAdminAction('MASS_DELETE_AUDIO', { 
+                deleted_files: files?.length || 0,
+                deleted_messages: true 
+            });
+            showToast('Todos os áudios foram apagados com sucesso!', 'success');
+            
+            // Recarregar gráfico e logs
+            await loadMessagesChart();
+            await loadActivityLogs();
+        } catch (e) {
+            console.error('Erro ao apagar áudios:', e);
+            showToast('Erro ao apagar áudios: ' + e.message, 'error');
+        }
+    });
+}
+
+
 async function deleteAllPrivateMessages() {
     showPasswordModal('Apagar mensagens privadas', async () => {
         try { 

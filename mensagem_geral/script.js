@@ -520,20 +520,50 @@ function createMessageDiv(msg) {
 
     // Conteúdo (GIF ou texto)
     let messageHtml = '';
-    const trimmedContent = msg.content.trim();
-    const memeUrl = memeCommands[trimmedContent];
-    if (memeUrl) {
-        messageHtml = `<img src="${memeUrl}" alt="meme" class="meme-gif" loading="lazy" onclick="window.open(this.src)">`;
+    // ⭐ DETECTAR ÁUDIO (mensagem enviada pelo botão de voz)
+        if (msg.content.startsWith('[AUDIO]')) {
+        const audioUrl = msg.content.substring(7);
+        // Cria um ID único para cada player
+        const audioId = `audio_${msg.id}_${Date.now()}`;
+        messageHtml = `
+            <div class="custom-audio-player" data-audio-id="${audioId}">
+                <div class="audio-waveform" id="waveform-${audioId}">
+                    <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+                    <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+                    <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+                </div>
+                <button class="audio-play-btn" data-url="${escapeHtml(audioUrl)}">
+                    <svg class="play-icon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M8 5v14l11-7z"/>
+                    </svg>
+                    <svg class="pause-icon" style="display:none" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+                    </svg>
+                </button>
+                <span class="audio-time">0:00 / 0:00</span>
+                <div class="audio-progress">
+                    <div class="audio-progress-bar"></div>
+                </div>
+                <audio id="${audioId}" src="${escapeHtml(audioUrl)}" preload="metadata"></audio>
+            </div>
+        `;
     } else {
-        let processedContent = linkifyAndEscape(msg.content);
-        processedContent = processedContent.replace(/@([a-z0-9_]+)/gi, (match, username) => {
-            const userExists = Object.values(allUsers).some(u => u.username.toLowerCase() === username.toLowerCase());
-            if (!userExists) return match;
-            const isMentioningMe = username.toLowerCase() === currentUser.username.toLowerCase();
-            const extraClass = isMentioningMe ? ' mention-self' : '';
-            return `<span class="mention${extraClass}" data-username="${username}" onclick="showUserProfileByUsername('${username}')">@${username}</span>`;
-        });
-        messageHtml = formatMessageText(processedContent);
+        const trimmedContent = msg.content.trim();
+        const memeUrl = memeCommands[trimmedContent];
+        if (memeUrl) {
+            messageHtml = `<img src="${memeUrl}" alt="meme" class="meme-gif" loading="lazy" onclick="window.open(this.src)">`;
+        } else {
+            // linkify, menções, markdown...
+            let processedContent = linkifyAndEscape(msg.content);
+            processedContent = processedContent.replace(/@([a-z0-9_]+)/gi, (match, username) => {
+                const userExists = Object.values(allUsers).some(u => u.username.toLowerCase() === username.toLowerCase());
+                if (!userExists) return match;
+                const isMentioningMe = username.toLowerCase() === currentUser.username.toLowerCase();
+                const extraClass = isMentioningMe ? ' mention-self' : '';
+                return `<span class="mention${extraClass}" data-username="${username}" onclick="showUserProfileByUsername('${username}')">@${username}</span>`;
+            });
+            messageHtml = formatMessageText(processedContent);
+        }
     }
     const editedMark = msg.edited ? ' <span class="edited-mark">(editado)</span>' : '';
 
@@ -612,6 +642,10 @@ function renderMessage(msg, prepend = false) {
         } else {
             container.appendChild(newDiv);
         }
+    }
+
+    if (typeof initCustomAudioPlayers === 'function') {
+        setTimeout(initCustomAudioPlayers, 50);
     }
 
     // Só rola para o final se for uma mensagem nova (não atualização)
@@ -744,13 +778,16 @@ async function checkNewMessages() {
                     const mentions = msg.mentions || [];
                     if (mentions.includes(currentUser.id)) {
                         const sender = allUsers[msg.user_id]?.username || 'Usuário';
-                        // Notifica mesmo se o documento estiver visível? 
-                        // Para não incomodar, notifico apenas se a página estiver oculta (background)
-                        // Se quiser notificar sempre, remova o if(document.hidden)
                         if (document.hidden) {
+                            let body = msg.content;
+                            if (msg.content.startsWith('[AUDIO]')) {
+                                body = '🎤 enviou um áudio';
+                            } else if (msg.content.length > 100) {
+                                body = msg.content.substring(0, 100) + '...';
+                            }
                             showNotification(
                                 `🔔 ${sender} mencionou você`,
-                                msg.content.length > 100 ? msg.content.substring(0, 100) + '...' : msg.content,
+                                body,
                                 allUsers[msg.user_id]?.avatar_url,
                                 { url: '/mensagem_geral/index.html' }
                             );
@@ -764,15 +801,20 @@ async function checkNewMessages() {
             if (document.hidden && messages.length > 0) {
                 const lastMsg = messages[messages.length - 1];
                 const sender = allUsers[lastMsg.user_id]?.username || 'Usuário';
+                let body = lastMsg.content;
+                if (lastMsg.content.startsWith('[AUDIO]')) {
+                    body = '🎤 enviou um áudio';
+                } else if (lastMsg.content.length > 100) {
+                    body = lastMsg.content.substring(0, 100) + '...';
+                }
                 showNotification(
                     `Nova mensagem no chat geral`,
-                    `${sender}: ${lastMsg.content.substring(0, 100)}`,
+                    `${sender}: ${body}`,
                     allUsers[lastMsg.user_id]?.avatar_url,
                     { url: '/mensagem_geral/index.html' }
                 );
             }
         }
-        
     } catch (e) {
         console.warn('Erro ao verificar novas mensagens:', e);
     }
@@ -3597,4 +3639,220 @@ function insertMention(username) {
   input.focus();
   input.dispatchEvent(new Event('input', { bubbles: true }));
   hideMentionSuggestions();
+}
+
+// ========== MENSAGENS DE VOZ ==========
+// ========== MENSAGENS DE VOZ (CONTROLE TOTAL) ==========
+let mediaRecorder = null;
+let audioChunks = [];
+let isRecording = false;
+let audioStream = null;
+let pressTimer = null;
+
+const audioBtn = document.getElementById('audioRecordBtn');
+const audioFileInput = document.getElementById('audioFileInput');
+
+if (audioBtn) {
+    // Clique curto = iniciar/parar gravação
+    audioBtn.addEventListener('click', async () => {
+        if (isRecording) {
+            // Se está gravando, para e envia
+            stopVoiceRecordingAndSend();
+        } else {
+            // Inicia gravação
+            await startVoiceRecording();
+        }
+    });
+
+    // Clique longo = abrir seletor de arquivo
+    audioBtn.addEventListener('mousedown', () => {
+        pressTimer = setTimeout(() => {
+            audioFileInput.click();
+            pressTimer = null;
+        }, 500);
+    });
+    audioBtn.addEventListener('mouseup', () => {
+        if (pressTimer) clearTimeout(pressTimer);
+    });
+    audioBtn.addEventListener('mouseleave', () => {
+        if (pressTimer) clearTimeout(pressTimer);
+    });
+}
+
+async function startVoiceRecording() {
+    if (isRecording) return;
+    try {
+        audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(audioStream);
+        audioChunks = [];
+
+        mediaRecorder.ondataavailable = event => {
+            if (event.data.size > 0) audioChunks.push(event.data);
+        };
+
+        mediaRecorder.onstop = async () => {
+            audioStream.getTracks().forEach(track => track.stop());
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            if (audioBlob.size === 0) {
+                showToast('Nenhum áudio capturado', 'error');
+            } else {
+                await uploadAndSendVoice(audioBlob);
+            }
+            audioBtn.classList.remove('recording');
+            isRecording = false;
+            audioChunks = [];
+            mediaRecorder = null;
+            audioStream = null;
+        };
+
+        mediaRecorder.start(100);
+        isRecording = true;
+        audioBtn.classList.add('recording');
+        showToast('🎙️ Gravando... clique no microfone para parar', 'info');
+    } catch (err) {
+        showToast('Permissão de microfone negada', 'error');
+    }
+}
+
+function stopVoiceRecordingAndSend() {
+    if (mediaRecorder && isRecording && mediaRecorder.state === 'recording') {
+        mediaRecorder.stop();
+    }
+}
+
+async function uploadAndSendVoice(audioBlob) {
+    if (audioBlob.size > 1 * 1024 * 1024) {
+        showToast('Áudio muito grande (máx 2MB)', 'error');
+        return;
+    }
+    const fileName = `voice_${Date.now()}_${currentUser.id}.webm`;
+    const filePath = fileName;
+    try {
+        const { error: uploadError } = await db.storage.from('geral_audio').upload(filePath, audioBlob, {
+            cacheControl: '3600',
+            contentType: 'audio/webm'
+        });
+        if (uploadError) throw uploadError;
+
+        const { data: urlData } = db.storage.from('geral_audio').getPublicUrl(filePath);
+        const audioUrl = urlData.publicUrl;
+        const content = `[AUDIO]${audioUrl}`;
+        const messageData = {
+            user_id: currentUser.id,
+            content: content,
+            mentions: []
+        };
+        const { data: msg, error: msgError } = await db.from('geral_messages').insert(messageData).select().single();
+        if (msgError) throw msgError;
+        renderMessage(msg);
+        showToast('Áudio enviado!', 'success');
+    } catch (e) {
+        console.error(e);
+        showToast('Erro ao enviar áudio: ' + e.message, 'error');
+    }
+}
+
+// Upload de arquivo via clique longo
+if (audioFileInput) {
+    audioFileInput.addEventListener('change', async (e) => {
+        if (e.target.files.length) {
+            const file = e.target.files[0];
+            if (file.size > 2 * 1024 * 1024) {
+                showToast('Arquivo muito grande (máx 2MB)', 'error');
+                return;
+            }
+            if (!file.type.startsWith('audio/')) {
+                showToast('Selecione um arquivo de áudio', 'error');
+                return;
+            }
+            await uploadAndSendVoice(file);
+            audioFileInput.value = '';
+        }
+    });
+}
+
+
+
+function initCustomAudioPlayers() {
+    document.querySelectorAll('.custom-audio-player').forEach(container => {
+        // Evita duplicar eventos
+        if (container.dataset.initialized) return;
+        container.dataset.initialized = 'true';
+
+        const playBtn = container.querySelector('.audio-play-btn');
+        const progress = container.querySelector('.audio-progress');
+        const progressBar = container.querySelector('.audio-progress-bar');
+        const timeSpan = container.querySelector('.audio-time');
+        const audio = container.querySelector('audio');
+        const playIcon = playBtn.querySelector('.play-icon');
+        const pauseIcon = playBtn.querySelector('.pause-icon');
+
+        // Atualiza tempo e barra
+        audio.addEventListener('loadedmetadata', () => {
+            updateTimeDisplay();
+        });
+        audio.addEventListener('timeupdate', () => {
+            if (audio.duration) {
+                const percent = (audio.currentTime / audio.duration) * 100;
+                progressBar.style.width = `${percent}%`;
+                updateTimeDisplay();
+            }
+        });
+        audio.addEventListener('play', () => {
+            container.classList.add('playing');
+            playIcon.style.display = 'none';
+            pauseIcon.style.display = 'block';
+        });
+        audio.addEventListener('pause', () => {
+            container.classList.remove('playing');
+            playIcon.style.display = 'block';
+            pauseIcon.style.display = 'none';
+        });
+        audio.addEventListener('ended', () => {
+            container.classList.remove('playing');
+            playIcon.style.display = 'block';
+            pauseIcon.style.display = 'none';
+            progressBar.style.width = '0%';
+            updateTimeDisplay();
+        });
+
+        function updateTimeDisplay() {
+            if (isNaN(audio.duration) || audio.duration === Infinity) {
+                timeSpan.textContent = '0:00 / --:--';
+                return;
+            }
+            const current = formatTime(audio.currentTime);
+            const total = formatTime(audio.duration);
+            timeSpan.textContent = `${current} / ${total}`;
+        }
+
+        function formatTime(seconds) {
+            if (isNaN(seconds) || !isFinite(seconds)) return '0:00';
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+        }
+
+
+        // Play/pause
+        playBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (audio.paused) {
+                // Pausa todos os outros antes de tocar
+                document.querySelectorAll('audio').forEach(a => {
+                    if (a !== audio && !a.paused) a.pause();
+                });
+                audio.play();
+            } else {
+                audio.pause();
+            }
+        });
+
+        // Clique na barra de progresso
+        progress.addEventListener('click', (e) => {
+            const rect = progress.getBoundingClientRect();
+            const pos = (e.clientX - rect.left) / rect.width;
+            audio.currentTime = pos * audio.duration;
+        });
+    });
 }

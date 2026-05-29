@@ -2257,3 +2257,196 @@ body {
         width: calc(50% - 3px) !important;
     }
 }
+
+/* Botão de áudio */
+.btn-audio {
+    background: rgba(139, 92, 246, 0.1);
+    border: none;
+    border-radius: 40px;
+    width: 42px;
+    height: 42px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: 0.2s;
+    color: #c4b5fd;
+}
+.btn-audio:hover {
+    background: rgba(139, 92, 246, 0.25);
+    transform: scale(1.02);
+}
+.btn-audio.recording {
+    background: #ef4444;
+    color: white;
+    animation: pulse 1s infinite;
+}
+@keyframes pulse {
+    0% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.08); opacity: 0.8; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+
+/* ===== PLAYER DE ÁUDIO CUSTOMIZADO (VERSÃO PREMIUM) ===== */
+.custom-audio-player {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: linear-gradient(135deg, #1a1a24 0%, #13131a 100%);
+    padding: 8px 16px;
+    border-radius: 60px;
+    border: 1px solid rgba(139, 92, 246, 0.2);
+    max-width: 380px;
+    width: fit-content;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: all 0.2s ease;
+    backdrop-filter: blur(2px);
+}
+
+.custom-audio-player:hover {
+    border-color: #8b5cf6;
+    box-shadow: 0 6px 18px rgba(139, 92, 246, 0.2);
+    background: linear-gradient(135deg, #1e1e2c 0%, #16161e 100%);
+    transform: translateY(-1px);
+}
+
+/* Botão play/pause */
+.audio-play-btn {
+    background: linear-gradient(145deg, #8b5cf6, #6d28d9);
+    border: none;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+    flex-shrink: 0;
+    color: white;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.audio-play-btn:hover {
+    transform: scale(1.05);
+    background: linear-gradient(145deg, #9b6cf6, #7c3aed);
+    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.5);
+}
+
+.audio-play-btn:active {
+    transform: scale(0.96);
+}
+
+/* Ícones do botão */
+.audio-play-btn svg {
+    width: 20px;
+    height: 20px;
+    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.2));
+}
+
+/* Waveform animado */
+.audio-waveform {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 32px;
+    flex-shrink: 0;
+}
+.wave-bar {
+    width: 3px;
+    background: linear-gradient(180deg, #8b5cf6, #c4b5fd);
+    border-radius: 3px;
+    transition: height 0.1s ease;
+    opacity: 0.7;
+}
+.custom-audio-player.playing .wave-bar {
+    opacity: 1;
+    background: linear-gradient(180deg, #a78bfa, #ddd6fe);
+}
+/* Alturas individuais para animação */
+.custom-audio-player.playing .wave-bar:nth-child(1) { height: 6px; animation: waveAnim 0.8s infinite ease; }
+.custom-audio-player.playing .wave-bar:nth-child(2) { height: 12px; animation: waveAnim 0.6s infinite ease 0.1s; }
+.custom-audio-player.playing .wave-bar:nth-child(3) { height: 18px; animation: waveAnim 0.9s infinite ease 0.2s; }
+.custom-audio-player.playing .wave-bar:nth-child(4) { height: 22px; animation: waveAnim 0.7s infinite ease 0.3s; }
+.custom-audio-player.playing .wave-bar:nth-child(5) { height: 16px; animation: waveAnim 1s infinite ease 0.4s; }
+.custom-audio-player.playing .wave-bar:nth-child(6) { height: 10px; animation: waveAnim 0.5s infinite ease 0.5s; }
+.custom-audio-player.playing .wave-bar:nth-child(7) { height: 20px; animation: waveAnim 0.8s infinite ease 0.6s; }
+.custom-audio-player.playing .wave-bar:nth-child(8) { height: 8px; animation: waveAnim 0.6s infinite ease 0.7s; }
+.custom-audio-player.playing .wave-bar:nth-child(9) { height: 14px; animation: waveAnim 0.9s infinite ease 0.8s; }
+
+@keyframes waveAnim {
+    0%, 100% { transform: scaleY(0.5); opacity: 0.5; }
+    50% { transform: scaleY(1); opacity: 1; }
+}
+
+/* Timer */
+.audio-time {
+    font-size: 13px;
+    font-weight: 500;
+    color: #c4b5fd;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    background: rgba(0, 0, 0, 0.4);
+    padding: 2px 8px;
+    border-radius: 20px;
+    letter-spacing: 0.5px;
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.2);
+    white-space: nowrap;
+}
+
+/* Barra de progresso */
+.audio-progress {
+    flex: 1;
+    height: 5px;
+    background: #2a2a3a;
+    border-radius: 5px;
+    cursor: pointer;
+    overflow: hidden;
+    position: relative;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+.audio-progress-bar {
+    width: 0%;
+    height: 100%;
+    background: linear-gradient(90deg, #8b5cf6, #c4b5fd);
+    border-radius: 5px;
+    position: relative;
+    transition: width 0.05s linear;
+    box-shadow: 0 0 4px #8b5cf6;
+}
+.audio-progress:hover .audio-progress-bar {
+    filter: brightness(1.1);
+}
+
+/* Responsivo para celular */
+@media (max-width: 550px) {
+    .custom-audio-player {
+        max-width: 280px;
+        padding: 6px 12px;
+        gap: 8px;
+    }
+    .audio-play-btn {
+        width: 34px;
+        height: 34px;
+    }
+    .audio-play-btn svg {
+        width: 16px;
+        height: 16px;
+    }
+    .audio-waveform {
+        gap: 2px;
+        height: 26px;
+    }
+    .wave-bar {
+        width: 2px;
+    }
+    .audio-time {
+        font-size: 11px;
+        padding: 2px 6px;
+        min-width: 55px;
+        text-align: center;
+    }
+    .audio-progress {
+        height: 4px;
+    }
+}
