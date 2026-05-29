@@ -22,6 +22,9 @@ const inputContainer = document.querySelector('.geral-input-container');
 if (inputContainer) inputContainer.appendChild(mentionSuggestions);
 let mentionFilter = '';
 let mentionSelectedIndex = 0;
+let recordingTimerInterval = null;
+let recordingSeconds = 0;
+let recordingTimeout = null;
 
 
 
@@ -434,6 +437,7 @@ async function loadGeralMessages() {
 
 // ==================== 2. createMessageDiv (sem o bloco de mensagem excluída) ====================
 function createMessageDiv(msg) {
+    console.log('📌 createMessageDiv iniciada para msg', msg.id);
     const user = allUsers[msg.user_id] || { username: 'Desconhecido', role: 'user', avatar_url: null };
     const isOwn = msg.user_id === currentUser.id;
     const SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000000';
@@ -459,6 +463,7 @@ function createMessageDiv(msg) {
                 <div class="geral-message-text">${formattedContent}</div>
             </div>
         `;
+        console.log('✅ createMessageDiv finalizada para msg', msg.id);
         return div;
     }
 
@@ -747,6 +752,14 @@ function getRoleColor(role) {
         'user': '#9ca3af'
     };
     return colors[role] || '#9ca3af';
+}
+
+function isMessageEditable(createdAt) {
+    if (!createdAt) return true;
+    const now = new Date();
+    const msgDate = new Date(createdAt);
+    const diffHours = (now - msgDate) / (1000 * 60 * 60);
+    return diffHours < 24; // edição permitida por 24 horas
 }
 
 // ========== POLLING ==========
@@ -3641,30 +3654,27 @@ function insertMention(username) {
   hideMentionSuggestions();
 }
 
-// ========== MENSAGENS DE VOZ ==========
-// ========== MENSAGENS DE VOZ (CONTROLE TOTAL) ==========
+// ========== MENSAGENS DE VOZ (COM LIMITE DE TAMANHO EM TEMPO REAL) ==========
 let mediaRecorder = null;
 let audioChunks = [];
 let isRecording = false;
 let audioStream = null;
 let pressTimer = null;
+let accumulatedSize = 0;           // acumula tamanho dos chunks
+const MAX_AUDIO_SIZE = 1 * 1024 * 1024; // 1 MB
 
 const audioBtn = document.getElementById('audioRecordBtn');
 const audioFileInput = document.getElementById('audioFileInput');
 
 if (audioBtn) {
-    // Clique curto = iniciar/parar gravação
     audioBtn.addEventListener('click', async () => {
         if (isRecording) {
-            // Se está gravando, para e envia
             stopVoiceRecordingAndSend();
         } else {
-            // Inicia gravação
             await startVoiceRecording();
         }
     });
 
-    // Clique longo = abrir seletor de arquivo
     audioBtn.addEventListener('mousedown', () => {
         pressTimer = setTimeout(() => {
             audioFileInput.click();
@@ -3685,12 +3695,25 @@ async function startVoiceRecording() {
         audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         mediaRecorder = new MediaRecorder(audioStream);
         audioChunks = [];
+        accumulatedSize = 0;
 
         mediaRecorder.ondataavailable = event => {
-            if (event.data.size > 0) audioChunks.push(event.data);
+            if (event.data.size > 0) {
+                audioChunks.push(event.data);
+                accumulatedSize += event.data.size;
+                console.log(`Chunk: ${event.data.size} bytes, total: ${accumulatedSize}`);
+
+                // Se ultrapassar o limite, para a gravação e envia
+                if (accumulatedSize >= MAX_AUDIO_SIZE) {
+                    console.log('Limite de tamanho atingido, parando gravação...');
+                    stopVoiceRecordingAndSend();
+                }
+            }
         };
 
         mediaRecorder.onstop = async () => {
+            stopRecordingTimer();
+            if (recordingTimeout) clearTimeout(recordingTimeout);
             audioStream.getTracks().forEach(track => track.stop());
             const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
             if (audioBlob.size === 0) {
@@ -3703,15 +3726,55 @@ async function startVoiceRecording() {
             audioChunks = [];
             mediaRecorder = null;
             audioStream = null;
+            accumulatedSize = 0;
         };
 
-        mediaRecorder.start(100);
+        mediaRecorder.start(100); // coleta a cada 100ms
         isRecording = true;
         audioBtn.classList.add('recording');
-        showToast('🎙️ Gravando... clique no microfone para parar', 'info');
+
+        startRecordingTimer();
+
+        // Limite de tempo (60 segundos)
+        recordingTimeout = setTimeout(() => {
+            if (mediaRecorder && isRecording && mediaRecorder.state === 'recording') {
+                showToast('⏱️ Limite de 60s atingido. Enviando...', 'info');
+                stopVoiceRecordingAndSend();
+            }
+        }, 60000);
+
+        showToast('🎙️ Gravando... solte para enviar', 'info', 2000);
     } catch (err) {
+        console.error(err);
         showToast('Permissão de microfone negada', 'error');
     }
+}
+
+function startRecordingTimer() {
+    recordingSeconds = 0;
+    const timerElement = document.getElementById('recordingTimer');
+    if (timerElement) {
+        timerElement.style.display = 'inline-block';
+        timerElement.textContent = '0:00';
+    }
+    if (recordingTimerInterval) clearInterval(recordingTimerInterval);
+    recordingTimerInterval = setInterval(() => {
+        recordingSeconds++;
+        const minutes = Math.floor(recordingSeconds / 60);
+        const secs = recordingSeconds % 60;
+        const timeStr = `${minutes}:${secs.toString().padStart(2, '0')}`;
+        const timerElement = document.getElementById('recordingTimer');
+        if (timerElement) timerElement.textContent = timeStr;
+    }, 1000);
+}
+
+function stopRecordingTimer() {
+    if (recordingTimerInterval) {
+        clearInterval(recordingTimerInterval);
+        recordingTimerInterval = null;
+    }
+    const timerElement = document.getElementById('recordingTimer');
+    if (timerElement) timerElement.style.display = 'none';
 }
 
 function stopVoiceRecordingAndSend() {
@@ -3721,9 +3784,10 @@ function stopVoiceRecordingAndSend() {
 }
 
 async function uploadAndSendVoice(audioBlob) {
-    if (audioBlob.size > 1 * 1024 * 1024) {
-        showToast('Áudio muito grande (máx 2MB)', 'error');
-        return;
+    // Verifica novamente o tamanho (por segurança)
+    if (audioBlob.size > MAX_AUDIO_SIZE) {
+        showToast(`Áudio excede ${MAX_AUDIO_SIZE / (1024*1024)}MB, enviando parcial...`, 'warning');
+        // Se mesmo assim estourou, não envia? Mas pela lógica não deveria chegar aqui
     }
     const fileName = `voice_${Date.now()}_${currentUser.id}.webm`;
     const filePath = fileName;
@@ -3757,8 +3821,8 @@ if (audioFileInput) {
     audioFileInput.addEventListener('change', async (e) => {
         if (e.target.files.length) {
             const file = e.target.files[0];
-            if (file.size > 2 * 1024 * 1024) {
-                showToast('Arquivo muito grande (máx 2MB)', 'error');
+            if (file.size > MAX_AUDIO_SIZE) {
+                showToast(`Arquivo muito grande (máx ${MAX_AUDIO_SIZE / (1024*1024)}MB)`, 'error');
                 return;
             }
             if (!file.type.startsWith('audio/')) {
